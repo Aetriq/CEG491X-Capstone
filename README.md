@@ -1,7 +1,7 @@
 <!-- PROJECT LOGO -->
 <p align="center">
-  <a href="https://github.com/your-username/your-repo">
-    <img src="https://img.shields.io/badge/Your_Project-Logo-blue?style=for-the-badge" alt="Logo">
+  <a href="https://github.com/Aetriq/CEG491X-Capstone">
+    <img src="repo_img/logotemp.png" alt="Logo">
   </a>
 </p>
 
