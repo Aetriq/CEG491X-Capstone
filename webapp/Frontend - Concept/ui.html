@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>EchoLog UI v0.1</title>
+<style>
+  :root{
+    --teal:#1f8dc0;
+    --teal-dark:#1f7f88;
+    --panel-bg:#dff2f4;
+    --accent:#00133d;
+    --muted:#7b8b91;
+    --row-alt:#e9f3f4;
+    --white:#ffffff;
+    --container-bg:#f7fafb;
+    --shadow: 0 6px 18px rgba(0,0,0,0.12);
+    font-family: 'Frutiger', "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  @font-face {
+    font-family: 'Frutiger';
+    src: url('FrutigerLTStd55Roman.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+  }
+
+
+  body{
+    margin:0;
+    min-height:100vh;
+    background: linear-gradient(180deg,#f4fbfd 0%, #fbfcfe 100%);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:28px;
+    box-sizing:border-box;
+  }
+
+  .mock {
+    width:1100px;
+    height:600px;
+    background:var(--container-bg);
+    border-radius:12px;
+    box-shadow: var(--shadow);
+    display:flex;
+    overflow:hidden;
+    position:relative;
+    border: 3px solid #bcdfe4;
+  }
+
+  .sidebar {
+    width:230px;
+    background: linear-gradient(180deg,#1f8dc0 0%, #165a7a 100%);
+    padding:22px;
+    color:#1f8dc0;
+    box-sizing:border-box;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    align-items:center;
+  }
+  .logo {
+    font-weight:800;
+    color:#cfeff4;
+    font-size:28px;
+    margin-bottom:6px;
+    text-shadow: 0 1px 0 rgba(0,0,0,0.08);
+  }
+  .device-card {
+    width:190px;
+    background: linear-gradient(180deg,#29bbff,rgb(151, 241, 255));
+    border-radius:18px;
+    padding:14px;
+    box-sizing:border-box;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    align-items:stretch;
+    color:#012b2e;
+    box-shadow: inset 0 -10px 24px rgba(255,255,255,0.06);
+  }
+  .status-row {
+    display:flex;
+    gap:5px;
+    align-items:center;
+  }
+  .status-row svg{width:28px;height:28px;flex:0 0 28px;}
+  .status-label{
+    font-weight:700;
+    font-size:15px;
+    color:#012b2e;
+  }
+  .device-actions{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    margin-top:6px;
+  }
+  .btn {
+    display:flex;
+    gap:10px;
+    align-items:center;
+    padding:9px 10px;
+    background: rgba(0, 32, 70, 0.5);
+    border-radius:10px;
+    color:#ffffff;
+    font-weight:700;
+    text-align: center;
+    border:1px solid rgba(255,255,255,0.08);
+  }
+  .btn svg{width:22px;height:22px;opacity:0.95}
+
+  .content {
+    flex:1;
+    padding:18px 18px 18px 8px;
+    box-sizing:border-box;
+    display:flex;
+    flex-direction:column;
+  }
+
+  .header-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:10px;
+    padding-right:6px;
+  }
+  .title {
+    display:flex;
+    gap:12px;
+    align-items:center;
+  }
+  .table-wrap {
+    background:transparent;
+    border-radius:8px;
+    overflow:hidden;
+    border-left: 1px solid rgba(0,0,0,0.03);
+    border-right: 1px solid rgba(0,0,0,0.03);
+    flex:1;
+    display:flex;
+  }
+
+  .table {
+    flex:1;
+    padding:8px;
+    box-sizing:border-box;
+    overflow:auto;
+  }
+
+  table {
+    width:100%;
+    border-collapse:collapse;
+    min-width:820px;
+  }
+
+  thead th {
+    text-align:left;
+    font-weight:800;
+    font-size:13px;
+    color:#10424a;
+    padding:12px 14px;
+    border-bottom:3px solid #d9f0f3;
+    background:linear-gradient(180deg, rgba(255,255,255,0.0), rgba(255,255,255,0.02));
+    background: var(--container-bg);
+    z-index: 3;
+    position: sticky;
+    top: 0;
+  }
+
+  tbody tr {
+    transition:background .12s;
+  }
+
+  tbody tr:nth-child(odd) td{
+    background:var(--row-alt);
+  }
+  tbody td{
+    padding:8px;
+    vertical-align:middle;
+    color:#27a7b8;
+    font-size:14px;
+    border-bottom:1px solid rgba(10,20,22,0.02);
+  }
+
+  .event {
+    width:46px;
+    text-align:center;
+    font-weight:800;
+    color:#0f5961;
+    font-size:14px;
+  }
+  .time { width:80px; color:#0a5056; font-weight:700; }
+  .transcript { width:48%; padding-right:8px; color:#123f43; }
+  .position { width:210px; color:#0a4f55; font-weight:600; font-size:13px; }
+  .audio-cell { width:165px; text-align:right; padding-right:20px; }
+
+  .audio {
+    display:inline-flex;
+    gap:12px;
+    align-items:center;
+    justify-content:flex-end;
+  }
+  .play {
+    width:36px;height:36px;
+    border-radius:50%;
+    background:linear-gradient(180deg,#2f93a5,#1e6f78);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    box-shadow:0 4px 8px rgba(0,0,0,0.12);
+  }
+  .bar {
+    height:8px;
+    width:92px;
+    background:linear-gradient(90deg,#d4eef0,#c2e7ea);
+    border-radius:6px;
+    position:relative;
+    display:inline-block;
+  }
+  .bar::after{
+    content:'';
+    position:absolute;
+    height:8px;width:24px;left:0;top:0;
+    background:linear-gradient(90deg,#0f5961,#59d7df);
+    border-radius:6px;
+  }
+
+  .rownum {
+    display:inline-block;
+    min-width:36px;
+    text-align:center;
+    font-weight:800;
+    color:#0b5056;
+    background:linear-gradient(180deg, rgba(255,255,255,0.25), rgba(255,255,255,0));
+    padding:8px 6px;
+    border-radius:8px;
+  }
+
+  .scroll-visual {
+    position:absolute;
+    right:8px;
+    top:70px;
+    bottom:18px;
+    width:12px;
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+  }
+  .scroll-track{
+    width:6px;
+    height:100%;
+    background:linear-gradient(180deg,#e9f3f4,#f7fbfc);
+    border-radius:10px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.6);
+    position:relative;
+  }
+  .scroll-thumb{
+    width:12px;
+    height:44px;
+    background:linear-gradient(180deg,#2f93a5,#1b6e74);
+    border-radius:12px;
+    position:absolute;
+    left:-3px;
+    top:8px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .top-buttons {
+    position: absolute;
+    top: 14px;
+    right: 18px;
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+    z-index: 10; /* keeps them above content */
+  }
+
+  .back-btn,
+  .download {
+    background: linear-gradient(180deg, #2f93a5, #1e6f78);
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.12);
+    cursor: pointer;
+  }
+
+
+  @media (max-width:1100px){
+    .mock{ width:95%; }
+  }
+</style>
+</head>
+<body>
+  <div class="mock" role="application" aria-label="EchoLog interface">
+    <div class="top-buttons">
+      <a href="index.html" class="back-btn" title="Return to Main Menu">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M15 18l-6-6 6-6" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Main Menu
+      </a>
+
+      <div class="download" title="Download CSV">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 3v9" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M8 11l4 4 4-4" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M21 21H3" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Download CSV
+      </div>
+    </div>
+
+
+    
+
+    <aside class="sidebar" aria-hidden="false">
+      <div class="logo">EchoLog</div>
+
+      <div class="device-card" role="region" aria-label="Device status">
+        <div class="status-row">
+          <div class="status-label">Device-ID: ECHLG-01</div>
+        </div>
+        <div class="status-row">
+          <div class="status-label">Day: 10.27.25</div>
+        </div>
+
+
+        <div class="status-row">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="1.5" y="3" width="21" height="18" rx="3" stroke="#012b2e" stroke-width="1.5" fill="#a9ecf0"/>
+            <path d="M7 12l2.5 2.5L17 7" stroke="#013433" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <div class="status-label">Connected (USB)</div>
+        </div>
+
+        <div class="status-row">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2.5" y="6.5" width="17" height="10" rx="2" stroke="#012b2e" stroke-width="1.6" fill="#cff2f4"/>
+            <rect x="20" y="9.5" width="1.7" height="5" rx="0.7" fill="#012b2e"/>
+          </svg>
+          <div class="status-label">87% (5h30m)</div>
+        </div>
+
+        <div class="status-row">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 7.5h6l2 2h10v7a1.5 1.5 0 0 1-1.5 1.5h-17A1.5 1.5 0 0 1 2 16.5v-7A1.5 1.5 0 0 1 3.5 8H3z" fill="#bfeff2" stroke="#012b2e" stroke-width="1"/>
+          </svg>
+          <div class="status-label">12% full (1.9/16G)</div>
+        </div>
+
+        <div class="device-actions">
+          <div class="btn" title="Save all data to computer">
+            Change Day
+          </div>
+          
+          <div class="btn" title="Save all data to computer">
+            Save  data to computer
+          </div>
+
+          <div class="btn" title="Synchronise clock">
+            Synchronise clock
+          </div>
+
+          <div class="btn" title="Clear device memory">
+            Clear Local Memory
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="content">
+      <div class="header-row">
+        <div style="display:flex;flex-direction:column;">
+          <div style="font-size:18px;font-weight:800;color:#0b4e55">Event Log</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">View device's storage.</div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:12px">
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table" role="table" aria-label="Event log table">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:56px">Event
+                <th style="width:88px">Time
+                <th>Transcript</th>
+                <th style="width:220px">Position</th>
+                <th style="width:170px;text-align:right">Audio</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="rownum">1</span></td>
+                <td class="time">12:24</td>
+                <td class="transcript">Leaving the base now.</td>
+                <td class="position">45°32'22.95" N<br/>073°30'59.28" W</td>
+                <td class="audio-cell">
+                  <div class="audio" aria-hidden="true">
+                    <div class="bar" title="0:23"></div>
+                    <div class="play" style="margin-left:8px">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 3v18l15-9L5 3z" fill="#fff"/></svg>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+
+              <tr>
+                <td><span class="rownum">2</span></td>
+                <td class="time">12:52</td>
+                <td class="transcript">Arriving on scene. No other units in sight.</td>
+                <td class="position">45°49'41.16" N<br/>073°17'42.99" W</td>
+                <td class="audio-cell">
+                  <div class="audio" aria-hidden="true">
+                    <div class="bar" title="0:15"></div>
+                    <div class="play"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 3v18l15-9L5 3z" fill="#fff"/></svg></div>
+                  </div>
+                </td>
+              </tr>
+
+              <tr>
+                <td><span class="rownum">3</span></td>
+                <td class="time">12:57</td>
+                <td class="transcript">Two victims located. Loaded them into the boat.</td>
+                <td class="position">45°49'49.34" N<br/>73°17'29.86" W</td>
+                <td class="audio-cell">
+                  <div class="audio" aria-hidden="true">
+                    <div class="bar" title="0:22"></div>
+                    <div class="play"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 3v18l15-9L5 3z" fill="#fff"/></svg></div>
+                  </div>
+                </td>
+              </tr>
+
+              <tr>
+                <td><span class="rownum">4</span></td>
+                <td class="time">13:05</td>
+                <td class="transcript">Administering oxygen now. Saturation at 93 percent.</td>
+                <td class="position">45°49'49.34" N<br/>73°17'29.86" W</td>
+                <td class="audio-cell">
+                  <div class="audio" aria-hidden="true">
+                    <div class="bar" title="0:19"></div>
+                    <div class="play"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 3v18l15-9L5 3z" fill="#fff"/></svg></div>
+                  </div>
+                </td>
+              </tr>
+
+              <tr>
+                <td><span class="rownum">5</span></td>
+                <td class="time">13:21</td>
+                <td class="transcript">No one else found. Evacuating the victims.</td>
+                <td class="position">45°49'49.34" N<br/>73°17'29.86" W</td>
+                <td class="audio-cell">
+                  <div class="audio" aria-hidden="true">
+                    <div class="bar" title="0:17"></div>
+                    <div class="play"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 3v18l15-9L5 3z" fill="#fff"/></svg></div>
+                  </div>
+                </td>
+              </tr>
+
+              <tr>
+                <td><span class="rownum">6</span></td>
+                <td class="time">13:40</td>
+                <td class="transcript">Arriving at the Port now. Ambulance already on site.</td>
+                <td class="position">45°30'23.45" N<br/>73°33'0.13" W</td>
+                <td class="audio-cell">
+                  <div class="audio" aria-hidden="true">
+                    <div class="bar" title="0:17"></div>
+                    <div class="play"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 3v18l15-9L5 3z" fill="#fff"/></svg></div>
+                  </div>
+                </td>
+              </tr>
+
+              <tr>
+                <td><span class="rownum">7</span></td>
+                <td class="time">13:56</td>
+                <td class="transcript">Transfer to paramedics complete.</td>
+                <td class="position">45°30'24.55" N<br/>73°33'4.68" W</td>
+                <td class="audio-cell">
+                  <div class="audio" aria-hidden="true">
+                    <div class="bar" title="0:13"></div>
+                    <div class="play"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 3v18l15-9L5 3z" fill="#fff"/></svg></div>
+                  </div>
+                </td>
+              </tr>
+
+              <tr>
+                <td><span class="rownum">8</span></td>
+                <td class="time">14:23</td>
+                <td class="transcript">Back at the base. End of mission 2468.</td>
+                <td class="position">45°32'22.95" N<br/>073°30'59.28" W</td>
+                <td class="audio-cell">
+                  <div class="audio" aria-hidden="true">
+                    <div class="bar" title="0:07"></div>
+                    <div class="play"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 3v18l15-9L5 3z" fill="#fff"/></svg></div>
+                  </div>
+                </td>
+              </tr>
+
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+
+    <div class="scroll-visual" aria-hidden="true">
+      <div class="scroll-track">
+        <div class="scroll-thumb">
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="2.2" fill="#fff"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

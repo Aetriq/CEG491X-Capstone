@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EchoLog Menu</title>
+
+<style>
+  :root {
+    --teal:#1f8dc0;
+    --teal-dark:#1f7f88;
+    --accent:#00133d;
+    --white:#ffffff;
+    --light-bg:#f7fafb;
+    --shadow: 0 6px 18px rgba(0,0,0,0.12);
+    --muted:#7b8b91;
+    font-family: 'Frutiger', "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  @font-face {
+    font-family: 'Frutiger';
+    src: url('FrutigerLTStd55Roman.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: linear-gradient(180deg,#f4fbfd 0%, #fbfcfe 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 28px;
+    box-sizing: border-box;
+  }
+
+  .mock {
+    width: 1100px;
+    height: 600px;
+    background: var(--light-bg);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    display: flex;
+    overflow: hidden;
+    border: 3px solid #bcdfe4;
+    position: relative;
+  }
+
+  .sidebar {
+    width: 260px;
+    background: linear-gradient(180deg,#1f8dc0 0%, #165a7a 100%);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 24px;
+    box-sizing: border-box;
+  }
+
+  .logo {
+    font-size: 34px;
+    font-weight: 800;
+    margin-bottom: 20px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  }
+
+  .status {
+    font-size: 14px;
+    margin-bottom: 20px;
+    line-height: 1.4;
+    opacity: 0.9;
+  }
+
+  .nav {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .nav a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    transition: background 0.2s;
+  }
+
+  .nav a:hover {
+    background: rgba(255,255,255,0.15);
+  }
+
+  .divider {
+    height: 1px;
+    background: rgba(255,255,255,0.25);
+    margin: 10px 0;
+  }
+
+  .account-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .avatar {
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--teal-dark);
+    font-size: 24px;
+    margin-bottom: 8px;
+  }
+
+  .username {
+    font-size: 14px;
+    color: #e0f5f8;
+  }
+
+  .logout {
+    color: #ff6666;
+    font-weight: 700;
+    margin-top: 6px;
+    text-decoration: none;
+  }
+
+  .logout:hover {
+    text-decoration: underline;
+  }
+
+  /* Main content area */
+  .main-content {
+    flex: 1;
+    padding: 20px 28px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .menu-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-gap: 20px;
+    flex: 1;
+  }
+
+  .menu-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+    padding: 20px;
+    transition: transform 0.2s, box-shadow 0.2s;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .menu-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 18px rgba(0,0,0,0.12);
+  }
+
+  .menu-card.wide {
+    grid-column: span 2;
+  }
+
+  .menu-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .menu-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    color: #fff;
+  }
+
+  .menu-icon.upload { background: #fca03e; }
+  .menu-icon.download { background: #b32b3f; }
+  .menu-icon.device { background: #00b4b8; }
+
+  .menu-title {
+    font-weight: 700;
+    font-size: 20px;
+    color: var(--accent);
+  }
+
+  .menu-desc {
+    font-size: 14px;
+    color: var(--muted);
+  }
+
+  .button-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .btn {
+    border: none;
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-weight: 600;
+    color: #fff;
+    cursor: pointer;
+  }
+
+  .btn.start { background: #4ab06a; }
+  .btn.stop { background: #e76f5c; }
+  .btn.select { background: #fca03e; }
+
+  .btn:hover { opacity: 0.9; }
+
+  .device-section {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 10px;
+    gap: 16px;
+  }
+
+  .device-column {
+    flex: 1;
+    background: #f5fafb;
+    border-radius: 8px;
+    padding: 10px;
+    box-sizing: border-box;
+  }
+
+  .device-column h4 {
+    margin: 0 0 8px;
+    color: #0a5056;
+    font-size: 15px;
+  }
+
+  .com-list, .bt-list {
+    background: #fff;
+    border-radius: 6px;
+    padding: 8px;
+    height: 100px;
+    overflow: auto;
+    font-family: monospace;
+    font-size: 14px;
+    margin-bottom: 8px;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+  }
+
+  .com-list div, .bt-list div {
+    padding: 3px 0;
+  }
+
+  .device-buttons {
+    display: flex;
+    gap: 6px;
+  }
+
+  .device-buttons button {
+    border: none;
+    padding: 7px 12px;
+    border-radius: 6px;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .refresh { background: #fca03e; }
+  .connect { background: #4ab06a; }
+  .scan { background: #fca03e; }
+
+  .device-buttons button:hover {
+    opacity: 0.9;
+  }
+</style>
+</head>
+
+<body>
+  <div class="mock">
+    <div class="sidebar">
+      <div>
+        <div class="logo">EchoLog</div>
+        <div class="status">
+          Device: Disconnected<br>
+          Status: === / ===
+        </div>
+
+        <div class="nav">
+          <a href="#">Home</a>
+          <a href="#">Echolog Device →</a>
+          <a href="#">Config Settings</a>
+          <a href="#">Account</a>
+        </div>
+      </div>
+
+      <div class="account-section">
+        <div class="avatar">👤</div>
+        <div class="username">username</div>
+        <a href="#" class="logout">Logout</a>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <div class="menu-grid">
+
+        <div class="menu-card">
+          <div class="menu-header">
+            <div class="menu-icon upload">⬆</div>
+            <div>
+              <div class="menu-title">Upload Files</div>
+              <div class="menu-desc">Upload files to onboard storage</div>
+            </div>
+          </div>
+          <div>File: – ; Size: 0Kb; Elapsed: 00:00:00</div>
+          <div class="button-row">
+            <button class="btn start">START ▶</button>
+            <button class="btn select">SELECT FILES</button>
+            <button class="btn stop">STOP</button>
+          </div>
+        </div>
+
+        <div class="menu-card">
+          <div class="menu-header">
+            <div class="menu-icon download">⬇</div>
+            <div>
+              <div class="menu-title">Download Files</div>
+              <div class="menu-desc">Download device’s raw files</div>
+            </div>
+          </div>
+          <div>Elapsed time: 00:00:00</div>
+          <div class="button-row">
+            <button class="btn select">SELECT DIRECTORY</button>
+            <button class="btn start">DOWNLOAD</button>
+            <button class="btn stop">STOP</button>
+          </div>
+        </div>
+
+        <div class="menu-card wide">
+          <div class="menu-header">
+            <div class="menu-icon device">🔗</div>
+            <div>
+              <div class="menu-title">Connect Device</div>
+              <div class="menu-desc">Connect via Serial/USB or Bluetooth</div>
+            </div>
+          </div>
+
+          <div class="device-section">
+            <div class="device-column">
+              <h4>Connect Serial/USB:</h4>
+              <div class="com-list">
+                <div>COM3</div>
+                <div>COM5</div>
+                <div>COM9</div>
+                <div>COM12</div>
+              </div>
+              <div class="device-buttons">
+                <button class="refresh">REFRESH</button>
+                <button class="connect">CONNECT ▶</button>
+              </div>
+            </div>
+
+            <div class="device-column">
+              <h4>Connect Bluetooth:</h4>
+              <div class="bt-list">
+                <div>No devices found.</div>
+              </div>
+              <div class="device-buttons">
+                <button class="scan">SCAN</button>
+                <button class="connect">CONNECT ▶</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</body>
+</html>

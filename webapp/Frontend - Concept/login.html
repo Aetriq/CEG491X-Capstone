@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EchoLog Login</title>
+
+<style>
+  :root {
+    --teal:#1f8dc0;
+    --teal-dark:#1f7f88;
+    --accent:#002a4d;
+    --white:#ffffff;
+    --shadow: 0 6px 18px rgba(0,0,0,0.12);
+    font-family: 'Frutiger', "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  @font-face {
+    font-family: 'Frutiger';
+    src: url('FrutigerLTStd55Roman.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: linear-gradient(180deg,#f4fbfd 0%, #fbfcfe 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 28px;
+    box-sizing: border-box;
+  }
+
+  .mock {
+    width: 1100px;
+    height: 600px;
+    background: var(--white);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    display: flex;
+    overflow: hidden;
+    border: 3px solid #bcdfe4;
+  }
+
+  .login-left {
+    width: 45%;
+    background:linear-gradient(180deg,#1f8dc0,#065174);
+    color: var(--white);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 40px;
+    box-sizing: border-box;
+  }
+
+  .login-left h1 {
+    font-size: 64px;
+    margin: 0;
+    letter-spacing: -1px;
+    font-weight: 700;
+  }
+
+  .login-left p {
+    font-size: 28px;
+    margin: 8px 0 32px 0;
+    font-weight: 400;
+  }
+
+  .login-form {
+    width: 100%;
+    max-width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .login-form label {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 4px;
+    display: block;
+  }
+
+  .login-form input {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: none;
+    font-size: 15px;
+    font-family: inherit;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.08);
+  }
+
+  .login-form a {
+    font-size: 13px;
+    color: #e4f5f8;
+    text-decoration: underline;
+    margin-top: -6px;
+    display: inline-block;
+  }
+
+  .login-form a:hover {
+    color: #fff;
+  }
+
+  .login-btn {
+    margin-top: 10px;
+    background: var(--accent);
+    color: #fff;
+    padding: 10px;
+    border: none;
+    border-radius: 10px;
+    font-size: 20px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.15);
+  }
+
+  .login-btn:hover {
+    background: #00265c;
+  }
+
+  .login-right {
+    width: 55%;
+    background: url('Picture1.png') center/cover no-repeat;
+    position: relative;
+  }
+
+  .login-right::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.08);
+  }
+
+  @media (max-width:1100px){
+    .mock { width: 95%; height: auto; flex-direction: column; }
+    .login-left, .login-right { width: 100%; height: auto; }
+    .login-right { height: 260px; }
+  }
+</style>
+</head>
+
+<body>
+  <div class="mock">
+    <div class="login-left">
+      <h1>EchoLog</h1>
+      <p>Login Now.</p>
+
+      <form class="login-form">
+        <div>
+          <label for="username">Username</label>
+          <input type="text" id="username" placeholder="Enter Username">
+        </div>
+
+        <div>
+          <label for="password">Password</label>
+          <input type="password" id="password" placeholder="Enter Password">
+        </div>
+
+        <div style="display:flex;justify-content:space-between;">
+          <a href="#">Forgot Password?</a>
+          <a href="#">Register Here</a>
+        </div>
+
+        <button type="button" class="login-btn">Login</button>
+      </form>
+    </div>
+
+    <div class="login-right"></div>
+  </div>
+</body>
+</html>
