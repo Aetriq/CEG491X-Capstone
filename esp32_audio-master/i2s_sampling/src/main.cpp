@@ -4,6 +4,10 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include "WiFiCredentials.h"
+// Extra ESP headers for improved crash/reset diagnostics
+#include <esp_system.h>
+#include <esp_task_wdt.h>
+#include <esp_heap_caps.h>
 ADCSampler *adcSampler = NULL;
 I2SSampler *i2sSampler = NULL;
 
@@ -72,21 +76,42 @@ void sendUsbSamples(int16_t *samples, uint32_t sampleCount, uint32_t sampleRate)
   Serial.write((const uint8_t *)&sampleRate, sizeof(sampleRate));
   Serial.write((const uint8_t *)&sampleCount, sizeof(sampleCount));
 
-  // write payload in chunks
+  // write payload in small non-blocking chunks to avoid blocking the USB TX
+  // buffer and triggering the watchdog. Use availableForWrite() to avoid
+  // blocking writes and yield between writes so other RTOS tasks can run.
   const uint8_t *ptr = (const uint8_t *)samples;
   size_t bytesTotal = sampleCount * sizeof(int16_t);
-  const size_t CHUNK = 2048; // bytes
+  const size_t CHUNK = 256; // bytes
   size_t sent = 0;
+  uint32_t wait_ms = 0;
   while (sent < bytesTotal)
   {
+    size_t canWrite = Serial.availableForWrite();
+    if (canWrite == 0) {
+      // let other tasks run and wait a short while for the buffer to drain
+      vTaskDelay(pdMS_TO_TICKS(1));
+      wait_ms++;
+      if ((wait_ms % 100) == 0) {
+        Serial.printf("warning: USB TX blocked for %u ms\n", wait_ms);
+      }
+      // If blocked for a long time, set a reset hint so the next boot can report it
+      if (wait_ms > 5000) {
+        // Too long stalled sending to USB. Record a serial warning so the
+        // next boot log includes evidence of a prolonged TX stall.
+        Serial.println("warning: prolonged USB TX stall detected (>5000 ms)");
+      }
+      continue;
+    }
     size_t toSend = bytesTotal - sent;
     if (toSend > CHUNK)
       toSend = CHUNK;
+    if (toSend > canWrite)
+      toSend = canWrite;
     Serial.write(ptr + sent, toSend);
-    Serial.flush();
     sent += toSend;
-    // small yield
-    delay(0);
+    wait_ms = 0;
+    // yield to scheduler briefly
+    vTaskDelay(0);
   }
 }
 
@@ -134,7 +159,19 @@ void setup()
 {
   Serial.begin(115200);
   delay(2000);
+  // Basic boot/crash diagnostics
   Serial.println("Feather ESP32-S3 audio firmware starting");
+  // Print reset reason (numeric) to help diagnose why the MCU restarted
+  esp_reset_reason_t rr = esp_reset_reason();
+  Serial.printf("Reset reason (esp_reset_reason): %d\n", (int)rr);
+  // Print chip/heap info to help diagnose memory exhaustion
+  esp_chip_info_t chipinfo;
+  esp_chip_info(&chipinfo);
+  Serial.printf("Chip CPU cores: %d, features: 0x%02x, revision: %d\n", chipinfo.cores, chipinfo.features, chipinfo.revision);
+  Serial.printf("Free heap: %u bytes, min free heap: %u bytes\n", ESP.getFreeHeap(), ESP.getMinFreeHeap());
+  // Print largest contiguous free block to help detect fragmentation
+  size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+  Serial.printf("Largest free heap block: %u bytes\n", (unsigned)largest);
   // enable neopixel power (some boards power the pixel via a GPIO)
   pinMode(NEOPIXEL_POWER_PIN, OUTPUT);
   digitalWrite(NEOPIXEL_POWER_PIN, HIGH);
