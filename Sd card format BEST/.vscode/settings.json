@@ -1,0 +1,24 @@
+{
+  "C_Cpp.intelliSenseEngine": "default",
+  "idf.espIdfPath": "/Users/max/esp-idf",
+  "idf.pythonInstallPath": "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+  "idf.openOcdConfigs": [
+    "board/esp32s3-builtin.cfg"
+  ],
+  "idf.port": "/dev/tty.wlan-debug",
+  "idf.toolsPath": "/Users/max/.espressif",
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32s3"
+  },
+  "clangd.path": "/Users/max/.espressif/tools/esp-clang/esp-19.1.2_20250312/esp-clang/bin/clangd",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=/Users/max/.espressif/tools/xtensa-esp-elf/esp-15.2.0_20250920/xtensa-esp-elf/bin/xtensa-esp32-elf-gcc",
+    "--compile-commands-dir=${workspaceFolder}/build"
+  ],
+  "files.associations": {
+    "sd_pwr_ctrl_by_on_chip_ldo.h": "c",
+    "esp_vfs_fat.h": "c"
+  },
+  "idf.flashType": "UART"
+}
