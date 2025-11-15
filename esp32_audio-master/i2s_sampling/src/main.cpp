@@ -8,6 +8,15 @@
 #include <esp_system.h>
 #include <esp_task_wdt.h>
 #include <esp_heap_caps.h>
+// SD / SPI
+#include <SPI.h>
+#include <SD.h>
+
+// SD SPI pins (user requested)
+#define SPI_SCK_PIN 36
+#define SPI_MOSI_PIN 35
+#define SPI_MISO_PIN 37
+#define SD_CS_PIN 5
 ADCSampler *adcSampler = NULL;
 I2SSampler *i2sSampler = NULL;
 
@@ -57,8 +66,17 @@ i2s_pin_config_t i2sPins = {
     .data_out_num = I2S_PIN_NO_CHANGE,
     .data_in_num = GPIO_NUM_16};
 
-// how many samples to read at once
-const int SAMPLE_SIZE = 16384;
+// how many samples to read at once (reduced to avoid large USB/SD bursts)
+const int SAMPLE_SIZE = 4096;
+
+// Ring buffer for SD writer
+const int NUM_AUDIO_BUFFERS = 4;
+static int16_t *audioBuffers[NUM_AUDIO_BUFFERS] = {0};
+static QueueHandle_t freeBufferQueue = NULL;   // holds uint8_t indices
+static QueueHandle_t filledBufferQueue = NULL; // holds uint8_t indices
+
+// SD writer state
+static const char *SD_FOLDER = "/recordings";
 
 // WiFi/HTTP transport removed; audio uses USB CDC via `sendUsbSamples()` below.
 
@@ -139,20 +157,110 @@ void adcWriterTask(void *param)
 void i2sMemsWriterTask(void *param)
 {
   I2SSampler *sampler = (I2SSampler *)param;
-  int16_t *samples = (int16_t *)malloc(sizeof(uint16_t) * SAMPLE_SIZE);
-  if (!samples)
-  {
-    Serial.println("Failed to allocate memory for samples");
-    return;
-  }
+  // Use preallocated buffers and a queue to hand off to SD writer
   while (true)
   {
-    int samples_read = sampler->read(samples, SAMPLE_SIZE);
+    uint8_t idx = 0;
+    // try to get a free buffer index
+    if (xQueueReceive(freeBufferQueue, &idx, pdMS_TO_TICKS(50)) != pdTRUE) {
+      // no free buffer available: drop this frame to avoid blocking sampling
+      int16_t tmp[SAMPLE_SIZE];
+      int samples_read = sampler->read(tmp, SAMPLE_SIZE);
+      (void)samples_read;
+      continue;
+    }
+    // read directly into the buffer
+    int samples_read = sampler->read(audioBuffers[idx], SAMPLE_SIZE);
     if (samples_read > 0) {
-      // Stream samples over USB to host
-      sendUsbSamples(samples, (uint32_t)samples_read, (uint32_t)i2sMemsConfigLeftChannel.sample_rate);
+      // send index to filled queue for SD writer
+      if (xQueueSend(filledBufferQueue, &idx, pdMS_TO_TICKS(10)) != pdTRUE) {
+        // failed to enqueue: return buffer to free queue
+        xQueueSend(freeBufferQueue, &idx, 0);
+      }
+    } else {
+      // nothing read: return buffer
+      xQueueSend(freeBufferQueue, &idx, 0);
+    }
+    // yield briefly
+    vTaskDelay(0);
+  }
+}
+
+
+// Helper to write a WAV header placeholder and update later
+static void writeWavHeaderPlaceholder(File &f, uint32_t sampleRate, uint16_t bitsPerSample, uint16_t channels)
+{
+  // RIFF header (44 bytes)
+  uint32_t byteRate = sampleRate * channels * (bitsPerSample / 8);
+  uint16_t blockAlign = channels * (bitsPerSample / 8);
+  // write header with zero sizes for now
+  f.seek(0);
+  f.write((const uint8_t *)"RIFF", 4);
+  uint32_t chunkSize = 36; // placeholder
+  f.write((const uint8_t *)&chunkSize, 4);
+  f.write((const uint8_t *)"WAVE", 4);
+  f.write((const uint8_t *)"fmt ", 4);
+  uint32_t subchunk1Size = 16;
+  f.write((const uint8_t *)&subchunk1Size, 4);
+  uint16_t audioFormat = 1; // PCM
+  f.write((const uint8_t *)&audioFormat, 2);
+  f.write((const uint8_t *)&channels, 2);
+  f.write((const uint8_t *)&sampleRate, 4);
+  f.write((const uint8_t *)&byteRate, 4);
+  f.write((const uint8_t *)&blockAlign, 2);
+  f.write((const uint8_t *)&bitsPerSample, 2);
+  f.write((const uint8_t *)"data", 4);
+  uint32_t dataSize = 0;
+  f.write((const uint8_t *)&dataSize, 4);
+}
+
+// SD writer task: consumes filled buffers and appends to WAV file
+void sdWriterTask(void *param)
+{
+  (void)param;
+  // create recordings folder if needed
+  if (!SD.exists(SD_FOLDER)) {
+    SD.mkdir(SD_FOLDER);
+  }
+  // open a new file with timestamp
+  char filename[64];
+  uint32_t t = (uint32_t)time(NULL);
+  snprintf(filename, sizeof(filename), "%s/rec_%u.wav", SD_FOLDER, t ? t : 0);
+  File wf = SD.open(filename, FILE_WRITE);
+  if (!wf) {
+    Serial.println("Failed to open WAV file for writing on SD");
+    vTaskDelete(NULL);
+    return;
+  }
+  // write placeholder header
+  writeWavHeaderPlaceholder(wf, i2sMemsConfigLeftChannel.sample_rate, 16, 1);
+  uint32_t dataBytes = 0;
+
+  Serial.printf("SD writer started, writing to %s\n", filename);
+
+  while (true) {
+    uint8_t idx;
+    if (xQueueReceive(filledBufferQueue, &idx, portMAX_DELAY) == pdTRUE) {
+      // write buffer to file
+      size_t toWrite = SAMPLE_SIZE * sizeof(int16_t);
+      size_t written = wf.write((const uint8_t *)audioBuffers[idx], toWrite);
+      dataBytes += written;
+      // flush periodically to ensure data is committed
+      wf.flush();
+      // return buffer to free queue
+      xQueueSend(freeBufferQueue, &idx, 0);
     }
   }
+
+  // finalize header (unreachable in normal operation)
+  // update chunk sizes
+  wf.seek(4);
+  uint32_t chunkSize = 36 + dataBytes;
+  wf.write((const uint8_t *)&chunkSize, 4);
+  wf.seek(40);
+  wf.write((const uint8_t *)&dataBytes, 4);
+  wf.close();
+  vTaskDelete(NULL);
 }
 
 void setup()
@@ -172,6 +280,17 @@ void setup()
   // Print largest contiguous free block to help detect fragmentation
   size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
   Serial.printf("Largest free heap block: %u bytes\n", (unsigned)largest);
+  // Initialize SPI for SD card (user-specified pins)
+  Serial.printf("Initializing SPI: SCK=%d MOSI=%d MISO=%d CS=%d\n", SPI_SCK_PIN, SPI_MOSI_PIN, SPI_MISO_PIN, SD_CS_PIN);
+  SPI.begin(SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN);
+  delay(10);
+  if (!SD.begin(SD_CS_PIN)) {
+    Serial.println("SD.begin() failed — check wiring and that MOSI is output-capable");
+  } else {
+    Serial.println("SD mounted OK");
+    uint64_t cardSize = (uint64_t)SD.cardSize() / (1024ULL * 1024ULL);
+    Serial.printf("SD size ~ %llu MB\n", cardSize);
+  }
   // enable neopixel power (some boards power the pixel via a GPIO)
   pinMode(NEOPIXEL_POWER_PIN, OUTPUT);
   digitalWrite(NEOPIXEL_POWER_PIN, HIGH);
@@ -195,11 +314,40 @@ void setup()
   // xTaskCreatePinnedToCore(adcWriterTask, "ADC Writer Task", 4096, adcSampler, 1, &adcWriterTaskHandle, 1);
 
   // Direct i2s input from INMP441 or the SPH0645
+  // Direct i2s input from INMP441 or the SPH0645
+  // Temporarily disable I2S sampling and writer tasks for SD testing
+#if 0
   i2sSampler = new I2SMEMSSampler(I2S_NUM_0, i2sPins, i2sMemsConfigLeftChannel, false);
   i2sSampler->start();
   // set up the i2s sample writer task
   TaskHandle_t i2sMemsWriterTaskHandle;
-  xTaskCreatePinnedToCore(i2sMemsWriterTask, "I2S Writer Task", 4096, i2sSampler, 1, &i2sMemsWriterTaskHandle, 1);
+  xTaskCreatePinnedToCore(i2sMemsWriterTask, "I2S Writer Task", 4096, i2sSampler, 2, &i2sMemsWriterTaskHandle, 1);
+
+  // allocate buffers and create queues
+  freeBufferQueue = xQueueCreate(NUM_AUDIO_BUFFERS, sizeof(uint8_t));
+  filledBufferQueue = xQueueCreate(NUM_AUDIO_BUFFERS, sizeof(uint8_t));
+  if (!freeBufferQueue || !filledBufferQueue) {
+    Serial.println("Failed to create buffer queues");
+  } else {
+    for (uint8_t i = 0; i < NUM_AUDIO_BUFFERS; ++i) {
+      audioBuffers[i] = (int16_t *)malloc(sizeof(int16_t) * SAMPLE_SIZE);
+      if (!audioBuffers[i]) {
+        Serial.printf("Failed to allocate audio buffer %d\n", i);
+      } else {
+        xQueueSend(freeBufferQueue, &i, 0);
+      }
+    }
+    // start SD writer task if SD mounted
+    if (SD.begin(SD_CS_PIN)) {
+      TaskHandle_t sdWriterHandle;
+      xTaskCreatePinnedToCore(sdWriterTask, "SD Writer", 8192, NULL, 1, &sdWriterHandle, 1);
+    } else {
+      Serial.println("SD not mounted; SD writer not started");
+    }
+  }
+#else
+  Serial.println("Audio sampling disabled for SD test");
+#endif
 
   // create a small task to blink the onboard neopixel so user can see the firmware is running
   auto neopixelBlinkTask = [](void *param) {
