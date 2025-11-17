@@ -1,0 +1,2 @@
+source /Users/max/esp-idf/examples/storage/sd_card/sdspi/build/bootloader/gdbinit/symbols
+source /Users/max/esp-idf/examples/storage/sd_card/sdspi/build/bootloader/gdbinit/connect

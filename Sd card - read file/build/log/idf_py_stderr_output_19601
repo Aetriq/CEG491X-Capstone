@@ -1,0 +1,9 @@
+Command: cmake -G Ninja -DPYTHON_DEPS_CHECKED=1 -DPYTHON=/Users/max/.espressif/python_env/idf6.0_py3.12_env/bin/python -DESP_PLATFORM=1 -DIDF_TARGET=esp32s3 -DCCACHE_ENABLE=False /Users/max/esp-idf/examples/storage/sd_card/sdspi
+Configuration Report               
+ ───────────────────────────────── 
+   Parser Version: 1               
+   Verbosity: default              
+   Defaults policy: sdkconfig      
+   Status: Finished successfully   
+                                   
+ ───────────────────────────────── 
