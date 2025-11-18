@@ -14,7 +14,7 @@
 // WAV recording parameters
 const uint32_t SAMPLE_RATE = 16000;
 #define BITS_PER_SAMPLE  16
-#define RECORD_SECONDS   10
+#define RECORD_SECONDS   30
 #define CHANNELS         1
 #define BUFFER_SIZE      512
 
