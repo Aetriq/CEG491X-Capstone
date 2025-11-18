@@ -50,6 +50,8 @@
 ## About the Project
 Based on the needs of our client, EchoLog is designed to be applicable with similar goals of recording and storing different forms of logs in high intensity/stress environments. It can also can provide value to any party from individuals that are spending out of pocket to improve their volunteering experience, to organizations with varying budgets. 
 
+![Concept Image Render](/repo_img/render_2025-Nov-17_05-16-37PM-000_CustomizedView8210932253.png)
+
 ---
 
 ## Highlighted Features
