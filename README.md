@@ -53,21 +53,22 @@ Based on the needs of our client, EchoLog is designed to be applicable with simi
 ---
 
 ## Highlighted Features
-- 
-- 
-- 
+- Fully handsfree operation and usage.
+- Rated for IP56 water and dust protection.
+- Capable of sustaining external thermal loads up to 80C.
+- Ultra low power, consuming <100mA peak, allowing for at least 6 hours of battery life. 
+- Advanced gesture detection and fully autonomous recording of audio and GPS.
 
 ---
 
 ## Technologies Used
-**Languages & Tools:**  
+- **Frontend**: Angular, HTML, CSS.
+- **Backend**: ESP-IDF Framework (C).
+- **Image builder/flasher**: PlatformIO.
 
-*(Update with actual tech stack, TBD)*
 
 ---
 
 ## Steps to Install
-List of H/W components
+TBD
 
-```bash
-Steps for s/w
