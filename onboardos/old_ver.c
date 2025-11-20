@@ -1,14 +1,3 @@
-/**
-* ////////////////////////////////////////////////////////////////////
-* // _____     _           _                  ____ _____ ___  ____  //
-* //| ____|___| |__   ___ | |    ___   __ _  |  _ \_   _/ _ \/ ___| //
-* //|  _| / __| '_ \ / _ \| |   / _ \ / _` | | |_) || || | | \___ \ //
-* //| |__| (__| | | | (_) | |__| (_) | (_| | |  _ < | || |_| |___) |//
-* //|_____\___|_| |_|\___/|_____\___/ \__, | |_| \_\|_| \___/|____/ //
-* //                                  |___/                         //
-* ////////////////////////////////////////////////////////////////////
-*/
-
 /* Team EchoLog (Group 2) */
 /* CEG4912/3 Capstone Project */
 /* School of Electrical Engineering and Computer Science at the University of Ottawa */
@@ -29,7 +18,7 @@
  * SPI Mode 
  * Stores all tracking/audio data
  *
- * GPS: GNSS UC6580 Built-Into the board
+ * GPS: GNSS UC6580 
  * UART Mode 
  * Interprets geographical location when possible */
 
@@ -55,20 +44,11 @@
 #include "driver/gpio.h"
 #include "esp_log.h"
 
-#include <sys/unistd.h>
-#include <sys/stat.h>
-/* Changed to I2S standard API header to resolve deprecation warning */
-#include "driver/i2s_std.h" 
-#include "esp_vfs_fat.h"
-#include "sdmmc_cmd.h"
-#include "driver/sdspi_host.h"
-
 #define GPIO_PIN_LED GPIO_NUM_1 
 #define WAKEUP_HOLD_TIME_US 500000 
 #define NORMAL_MODE_DURATION_MS 30000
 
 /* ==================== Pin mappings ====================  */
-/* @Tdoo: Optimize the pins used. Multiple SPI devices can be connected to one, but CS must be different */
 
 /* ADXL362 */
 #define PIN_NUM_MISO GPIO_NUM_6
@@ -76,20 +56,6 @@
 #define PIN_NUM_CLK  GPIO_NUM_4
 #define PIN_NUM_CS   GPIO_NUM_7
 #define PIN_NUM_INT1 GPIO_NUM_15
-
-/* AUDIO/SD */
-/* I2S Pins (SPH0645) */
-#define I2S_BCK_PIN     GPIO_NUM_46
-#define I2S_WS_PIN      GPIO_NUM_45   
-#define I2S_DATA_PIN    GPIO_NUM_26   
-#define I2S_PORT        I2S_NUM_0
-#define SAMPLE_RATE     16000
-
-/* SD Card Pins */
-#define SD_CLK_PIN      GPIO_NUM_47
-#define SD_MOSI_PIN     GPIO_NUM_48
-#define SD_MISO_PIN     GPIO_NUM_37
-#define SD_CS_PIN       GPIO_NUM_17
 
 /* ==================== Component Definitions ==================== */
 
@@ -108,23 +74,6 @@
 #define ADXL362_REG_POWER_CTL   0x2D
 #define ADXL362_REG_SOFT_RESET  0x1F
 
-/* WAV Header Structure*/
-typedef struct __attribute__((packed)) {
-    char riff[4];             
-    uint32_t chunkSize;       
-    char wave[4];             
-    char fmt[4];              
-    uint32_t subchunk1Size;   
-    uint16_t audioFormat;     
-    uint16_t numChannels;    
-    uint32_t sampleRate;      
-    uint32_t byteRate;        
-    uint16_t blockAlign;      
-    uint16_t bitsPerSample;   
-    char data[4];            
-    uint32_t subchunk2Size; 
-} wav_header_t;
-
 /* ==================== Public & Static Variables ==================== */
 
 static const char *TAG = "ADXL362";
@@ -133,8 +82,6 @@ static QueueHandle_t gpio_evt_queue = NULL;
 /* Handle for the SPI device */
 spi_device_handle_t spi_handle;
 
-/* I2S Channel Handle */
-i2s_chan_handle_t g_rx_handle = NULL;
 
 /* ==================== Functions ==================== */
 
@@ -281,136 +228,6 @@ static void IRAM_ATTR gpio_isr_handler(void* arg)
     xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
 }
 
-/* Write the nessecary values for the .wav extension header */
-void write_wav_header(FILE *f, uint32_t total_data_bytes) {
-    wav_header_t header;
-    memcpy(header.riff, "RIFF", 4);
-    memcpy(header.wave, "WAVE", 4);
-    memcpy(header.fmt, "fmt ", 4);
-    memcpy(header.data, "data", 4);
-
-    header.subchunk1Size = 16;
-    header.audioFormat = 1; 
-    header.numChannels = 1;
-    header.sampleRate = SAMPLE_RATE;
-    header.bitsPerSample = 16;
-    header.byteRate = SAMPLE_RATE * 1 * 16 / 8;
-    header.blockAlign = 1 * 16 / 8;
-    header.subchunk2Size = total_data_bytes;
-    header.chunkSize = 36 + total_data_bytes;
-
-    fseek(f, 0, SEEK_SET);
-    fwrite(&header, sizeof(wav_header_t), 1, f);
-}
-
-/* Intialize the microphone and sd module connections and drivers */
-void init_mic_and_sd() {
-    /* 1. Initialize I2S (Standard Mode for MEMS Mic) */
-    
-    /* Corrected: Use I2S_STD_MSB_SLOT_DEFAULT_CONFIG and I2S_STD_SLOT_LEFT */
-    i2s_std_config_t i2s_config = {
-        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(SAMPLE_RATE),
-        .slot_cfg = { .data_bit_width = I2S_STD_SLOT_LEFT, .slot_bit_width = I2S_SLOT_BIT_WIDTH_AUTO, .slot_mode = I2S_DIR_RX, .slot_mask = I2S_STD_SLOT_BOTH, .ws_width = I2S_STD_SLOT_LEFT, .ws_pol = 0, .bit_shift = 0, .left_align = 1, .big_endian = 0, .bit_order_lsb = 0 },
-        .gpio_cfg = {
-            .mclk = I2S_GPIO_UNUSED,        /* Not needed for SPH0645 */
-            .bclk = I2S_BCK_PIN,
-            .ws = I2S_WS_PIN,
-            .dout = I2S_GPIO_UNUSED,        /* Only RX (data in) is used */
-            .din = I2S_DATA_PIN,
-            .invert_flags = {
-                .mclk_inv = false,
-                .bclk_inv = false,
-                .ws_inv = false,
-            },
-        },
-    };
-    
-    /* Channel creation and initialization */
-    i2s_new_channel(&(i2s_chan_config_t){.id = I2S_PORT, .role = I2S_ROLE_MASTER}, NULL, &g_rx_handle);
-    i2s_channel_init_std_mode(g_rx_handle, &i2s_config);
-    i2s_channel_enable(g_rx_handle);
-
-    /* 2. Initialize SD Card */
-    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-        .format_if_mount_failed = true,
-        .max_files = 2,
-        .allocation_unit_size = 16 * 1024
-    };
-    sdmmc_card_t *card;
-    sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-    host.slot = SPI3_HOST; 
-
-    spi_bus_config_t bus_cfg = {
-        .mosi_io_num = SD_MOSI_PIN,
-        .miso_io_num = SD_MISO_PIN,
-        .sclk_io_num = SD_CLK_PIN,
-        .quadwp_io_num = -1, .quadhd_io_num = -1,
-        .max_transfer_sz = 4000,
-    };
-    
-    /* Initialize SPI3 bus with our specific pins */
-    spi_bus_initialize(host.slot, &bus_cfg, SPI_DMA_CH_AUTO);
-
-    sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
-    slot_config.gpio_cs = SD_CS_PIN;
-    slot_config.host_id = host.slot;
-
-    if (esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot_config, &mount_config, &card) != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to mount SD card");
-    } else {
-        ESP_LOGI(TAG, "SD Card mounted successfully");
-    }
-}
-
-/* Record the audio file as a .wav and generate unique filename based on timestamp */
-void record_wav_file(int duration_ms) {
-    /* Generate unique filename based on timestamp */
-    char filename[64]; /* Increased buffer size to prevent overflow error */
-    sprintf(filename, "/sdcard/rec_%lld.wav", esp_timer_get_time() / 1000);
-    
-    FILE *f = fopen(filename, "wb");
-    if (f == NULL) {
-        ESP_LOGE(TAG, "Failed to open file: %s", filename);
-        return;
-    }
-
-    /* Reserve header space */
-    fseek(f, sizeof(wav_header_t), SEEK_SET);
-
-    int32_t *i2s_buffer = (int32_t *)malloc(1024 * sizeof(int32_t));
-    int16_t *file_buffer = (int16_t *)malloc(1024 * sizeof(int16_t));
-    size_t bytes_read;
-    uint32_t total_bytes_written = 0;
-    
-    int64_t end_time = esp_timer_get_time() + ((int64_t)duration_ms * 1000);
-
-    ESP_LOGI(TAG, "Recording...");
-    
-    /* Recording Loop */
-    while (esp_timer_get_time() < end_time) {
-        /* Read 32-bit samples from I2S using the new channel API */
-        i2s_channel_read(g_rx_handle, i2s_buffer, 1024 * sizeof(int32_t), &bytes_read, portMAX_DELAY);
-        int samples = bytes_read / 4;
-
-        /* Convert to 16-bit PCM (Shift Right 16) */
-        for (int i = 0; i < samples; i++) {
-            /* SPH0645 is 24-bit left-justified in 32-bit word, so shifting down 8 bits (32-24) gets the 24-bit value, then shifting 8 more gets the 16-bit value. Total shift is 16. */
-            file_buffer[i] = (int16_t)(i2s_buffer[i] >> 16);
-        }
-        
-        fwrite(file_buffer, sizeof(int16_t), samples, f);
-        total_bytes_written += samples * sizeof(int16_t);
-    }
-
-    /* Write header and cleanup */
-    write_wav_header(f, total_bytes_written);
-    fclose(f);
-    free(i2s_buffer);
-    free(file_buffer);
-    ESP_LOGI(TAG, "Recording saved: %s", filename);
-}
-
-
 /* ==================== Main Method ==================== */
 
 void app_main(void) {
@@ -443,36 +260,12 @@ void app_main(void) {
                 /* Pin was held long enough. Stay awake for a fixed time. */
                 ESP_LOGI(TAG, "Mode: Normal. LED ON for %d seconds.", NORMAL_MODE_DURATION_MS / 1000);
                 
-                /* Turn LED ON to indicate normal mode (TESTING) */
+                /* Turn LED ON to indicate normal mode (testing, remove later, probably replace w/ onboard LED) */
                 gpio_set_level(GPIO_PIN_LED, 1);
-                
-                /* --- ADXL RE-INIT AND CLEAR INTERRUPT --- */
-                /* 1. SPI bus needs to be re-initialized after deep sleep */
-                spi_init(); 
-                
-                /* 2. Reading this register clears the pending interrupt flag on the ADXL362. */
-                adxl_read_reg(ADXL362_REG_INTMAP1); 
-                ESP_LOGI(TAG, "ADXL SPI re-initialized and interrupt cleared.");
 
-                /* ==================== NORMAL MODE BEGINS FOR DURATION ==================== */
-                /* --- RECORDING START --- */
-                /* Initialize Audio and SD (Safe pins: 46, 45, 26, 37, 48, 47, 17) */
-                init_mic_and_sd();
-
-                /* Record for the duration (This blocks, replacing the vTaskDelay) */
-                record_wav_file(NORMAL_MODE_DURATION_MS); // Execution pauses here for 30 seconds
-
-                /* Unmount to flush data safely */
-                esp_vfs_fat_sdcard_unmount("/sdcard", NULL);
-                
-                /* 4. Uninstall I2S driver to save power/state */
-                i2s_channel_disable(g_rx_handle);
-                i2s_del_channel(g_rx_handle);
-                g_rx_handle = NULL;
-                /* --- RECORDING END --- */
-
-                // NOTE: THE REDUNDANT vTaskDelay HAS BEEN REMOVED HERE.
-                // The NORMAL_MODE_DURATION is handled by record_wav_file().
+                // Wait for the fixed duration
+                // You can still add other "normal mode" logic here if needed.
+                vTaskDelay(pdMS_TO_TICKS(NORMAL_MODE_DURATION_MS));
 
                 /* --- TIME'S UP, GO BACK TO SLEEP --- */
                 ESP_LOGI(TAG, "Mode: Normal duration expired. Returning to deep sleep.");
@@ -480,7 +273,7 @@ void app_main(void) {
                 /* Turn LED OFF */
                 gpio_set_level(GPIO_PIN_LED, 0);
 
-                /* Re-config the pin for deep sleep wakeup */
+                /* Re-config the pin for deep sleep wakeup (This is the same code as the "FAILED WAKEUP" block) */
                 gpio_reset_pin(PIN_NUM_INT1); 
                 esp_sleep_enable_ext0_wakeup(PIN_NUM_INT1, 1); /* 1 = Wake on HIGH */
                 
@@ -503,7 +296,7 @@ void app_main(void) {
     
     else {
         /* --- FIRST BOOT / COLD BOOT --- */
-        ESP_LOGI(TAG, "EchoLog Real-Time Operating System (RTOS)");
+
         ESP_LOGI(TAG, "Mode: Normal (Configuring First Boot)");
 
         /* Init hardware */
