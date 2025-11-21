@@ -63,7 +63,7 @@
 #include "sdmmc_cmd.h"
 #include "driver/sdspi_host.h"
 
-#define GPIO_PIN_LED GPIO_NUM_1 
+#define GPIO_PIN_LED GPIO_NUM_38 
 #define WAKEUP_HOLD_TIME_US 500000 
 #define NORMAL_MODE_DURATION_MS 30000
 
@@ -80,16 +80,16 @@
 /* AUDIO/SD */
 /* I2S Pins (SPH0645) */
 #define I2S_BCK_PIN     GPIO_NUM_46
-#define I2S_WS_PIN      GPIO_NUM_45   
-#define I2S_DATA_PIN    GPIO_NUM_26   
+#define I2S_WS_PIN      GPIO_NUM_44   
+#define I2S_DATA_PIN    GPIO_NUM_45   
 #define I2S_PORT        I2S_NUM_0
 #define SAMPLE_RATE     16000
 
 /* SD Card Pins */
-#define SD_CLK_PIN      GPIO_NUM_47
-#define SD_MOSI_PIN     GPIO_NUM_48
-#define SD_MISO_PIN     GPIO_NUM_37
-#define SD_CS_PIN       GPIO_NUM_17
+#define SD_CLK_PIN      GPIO_NUM_12
+#define SD_MOSI_PIN     GPIO_NUM_14
+#define SD_MISO_PIN     GPIO_NUM_13
+#define SD_CS_PIN       GPIO_NUM_43
 
 /* ==================== Component Definitions ==================== */
 
