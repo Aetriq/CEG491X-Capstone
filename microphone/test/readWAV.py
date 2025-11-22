@@ -1,7 +1,7 @@
 import serial
 import struct
 
-COM_PORT = 'COM5'
+COM_PORT = 'COM10'
 BAUD_RATE = 921600
 OUT_FILENAME = 'received.wav'
 

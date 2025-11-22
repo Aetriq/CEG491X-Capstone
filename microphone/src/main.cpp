@@ -4,12 +4,14 @@
 #include "I2SMEMSSampler.h"
 
 // I2S pins for SPH0645
-#define I2S_BCLK_PIN  14
-#define I2S_WS_PIN    15
-#define I2S_DATA_PIN  16
+// Updated: WS=gpio44, SD=45, SCK=46
+#define I2S_BCLK_PIN  46
+#define I2S_WS_PIN    44
+#define I2S_DATA_PIN  45
 
-// SD card CS
-#define SD_CS_PIN     5
+// SD card SPI pins
+// cs=43, DI(MOSI)=14, DO(MISO)=13, clk=SCK=12
+#define SD_CS_PIN     43
 
 // WAV recording parameters
 const uint32_t SAMPLE_RATE = 16000;
@@ -33,12 +35,12 @@ i2s_config_t i2sConfig = {
     .fixed_mclk = 0
 };
 
-// I2S pin config
+// I2S pin config (BCLK = SCK, WS = LRCLK, DATA = SD)
 i2s_pin_config_t i2sPins = {
-    .bck_io_num = GPIO_NUM_14,
-    .ws_io_num = GPIO_NUM_15,
+    .bck_io_num = GPIO_NUM_46, // I2S_BCLK_PIN
+    .ws_io_num = GPIO_NUM_44,  // I2S_WS_PIN
     .data_out_num = I2S_PIN_NO_CHANGE,
-    .data_in_num = GPIO_NUM_16
+    .data_in_num = GPIO_NUM_45  // I2S_DATA_PIN
 };
 
 I2SMEMSSampler *i2sSampler = nullptr;
@@ -97,15 +99,17 @@ void streamWAVOverSerial(File &file, uint32_t numSamples) {
 }
 
 void setup() {
-    Serial.begin(115200);
-    delay(2000);
-    // Serial.println("ESP32-S3 WAV recorder starting...");
+    // Increase baud to speed up binary transfer and add simple debug prints
+    Serial.begin(921600);
+    delay(200);
+    Serial.println("ESP32-S3 WAV recorder starting...");
 
-    // Initialize SD
-    if (!SD.begin(SD_CS_PIN)) {
-      //  Serial.println("SD.begin failed!");
-        while (true) delay(1000);
-    }
+        // Initialize SPI with custom SD pins then SD
+        SPI.begin(12, 13, 14, SD_CS_PIN); // SCK, MISO, MOSI, SS
+        if (!SD.begin(SD_CS_PIN)) {
+            //  Serial.println("SD.begin failed!");
+                while (true) delay(1000);
+        }
 
     // Initialize I2S
     i2sSampler = new I2SMEMSSampler(I2S_NUM_0, i2sPins, i2sConfig, false);
@@ -128,7 +132,7 @@ void setup() {
     uint32_t totalSamples = SAMPLE_RATE * RECORD_SECONDS;
     uint32_t samplesWritten = 0;
 
-    //Serial.println("Recording...");
+    Serial.println("Recording to SD card...");
     while (samplesWritten < totalSamples) {
         uint32_t samplesToRead = min((uint32_t)BUFFER_SIZE, totalSamples - samplesWritten);
         uint32_t readCount = i2sSampler->read(buffer, samplesToRead);
@@ -140,15 +144,16 @@ void setup() {
     writeWAVHeader(wavFile, samplesWritten);
     wavFile.close();
 
-    //Serial.println("Recording finished. File saved to SD: /recording.wav");
-    //Serial.println("Streaming WAV over USB...");
+    Serial.println("Recording finished. File saved to SD: /recording.wav");
+    Serial.println("Preparing to stream WAV over serial...");
 
     // Reopen file for streaming
     wavFile = SD.open("/recording.wav", FILE_READ);
     if (wavFile) {
+        Serial.println("Streaming: sending header and payload over serial at 921600 baud");
         streamWAVOverSerial(wavFile, totalSamples);
         wavFile.close();
-        //Serial.println("Streaming complete.");
+        Serial.println("Streaming complete (device side)");
     } else {
         //Serial.println("Failed to reopen WAV file for streaming.");
     }
