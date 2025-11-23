@@ -1,5 +1,13 @@
 {
     "files.associations": {
-        "gpio.h": "c"
+        "gpio.h": "c",
+        "freertos.h": "c",
+        "spi_master.h": "c",
+        "unistd.h": "c",
+        "esp_log.h": "c",
+        "esp_vfs_fat.h": "c",
+        "esp_timer.h": "c",
+        "queue.h": "c",
+        "stdio.h": "c"
     }
 }
