@@ -1,7 +1,7 @@
 <!-- PROJECT LOGO -->
 <p align="center">
   <a href="https://github.com/Aetriq/CEG491X-Capstone">
-    <img src="repo_img/logotemp.png" alt="drawing" width="200"/>
+    <img src="https://github.com/Aetriq/CEG491X-Capstone/blob/main/webapp/loadinglogo.png?raw=true" alt="drawing" width="200"/>
   </a>
 </p>
 
