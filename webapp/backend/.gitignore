@@ -1,0 +1,6 @@
+node_modules/
+.env
+database/echolog.db
+database/echolog.db-journal
+uploads/
+*.log
