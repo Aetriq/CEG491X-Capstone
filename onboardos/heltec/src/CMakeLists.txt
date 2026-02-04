@@ -3,5 +3,5 @@
 
 FILE(GLOB_RECURSE app_sources ${CMAKE_SOURCE_DIR}/src/*.*)
 
-idf_component_register(SRCS "main.c" "bluetooth_mode.c" "recording_mode.c"
+idf_component_register(SRCS "main.c" "bluetooth_mode.c" "recording_mode.c" "rtc_module.c"
                     INCLUDE_DIRS ".")

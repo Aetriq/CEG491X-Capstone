@@ -70,6 +70,7 @@
 
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
+#include "rtc_module.h"
 
 /* ==================== 2.0 Pin Mappings ==================== */
 
@@ -78,7 +79,7 @@
 #define SD_PIN_NUM_CLK       GPIO_NUM_16
 #define SD_PIN_NUM_CS        GPIO_NUM_15
 
-#define GPIO_BT_LED          GPIO_NUM_40
+#define GPIO_BT_LED          GPIO_NUM_35
 #define PIN_MODE_BT          GPIO_NUM_0
 
 /* ==================== 3.0 Global Definitions & Variables ==================== */
@@ -167,6 +168,19 @@ void process_command_task(void *pvParameters) {
                 transfer_file = fopen(filepath, "rb");
                 if(transfer_file) is_downloading = true;
                 else send_eof();
+            }
+            else if (strncmp(pending_cmd, "time ", 5) == 0) {
+                int y, m, d, hh, mm, ss;
+                if (sscanf(pending_cmd + 5, "%d %d %d %d %d %d", &y, &m, &d, &hh, &mm, &ss) == 6) {
+                    rtc_set_time_manual(y, m, d, hh, mm, ss);
+                    
+                    char reply[20];
+                    int len = snprintf(reply, sizeof(reply), "SET:%04d%02d%02d", y, m, d);
+                    send_notification((uint8_t*)reply, len);
+                } else {
+                    send_notification((uint8_t*)"TIME_ERR", 8);
+                }
+                send_eof();
             }
             else if (strncmp(pending_cmd, "upload ", 7) == 0) {
                 char *fname = pending_cmd + 7;

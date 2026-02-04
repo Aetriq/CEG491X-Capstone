@@ -400,6 +400,20 @@
                         <button class="btn btn-green">Save Configuration</button>
                     </div>
                 </div>
+
+                <div class="card" style="margin-top: 20px;">
+                    <div class="card-header">
+                        <div class="icon-box teal-icon"><i class="fas fa-clock"></i></div>
+                        <div>
+                            <h3>Device Time Sync</h3>
+                            <p class="subtext">Sync onboard RTC with computer time</p>
+                        </div>
+                    </div>
+                    <div class="info-line" id="timeSyncStatus">Status: Ready to Sync</div>
+                    <div class="control-group">
+                        <button class="btn btn-blue" id="btnSyncTime">SYNC NOW</button>
+                    </div>
+                </div>
             </div>
 
             <div id="view-account" class="page-view">
@@ -584,6 +598,8 @@
             if (str.includes("EOF")) { finishDownload(); return; }
             if (str.includes("READY")) { processUploadStream(); return; }
             if (str.includes("ERROR")) { uploadStatus.innerText = "Error: SD Error"; return; }
+            
+            if (str.includes("SET:")) { document.getElementById('timeSyncStatus').innerText = "Success! Device Time Updated."; return; }
         }
 
         if (!isDownloading && value.byteLength < 100) {
@@ -671,6 +687,28 @@
         };
         reader.readAsArrayBuffer(uploadFileObj);
     }
+
+    // --- TIME SYNC FUNCTION ---
+    document.getElementById('btnSyncTime').addEventListener('click', async () => {
+        if (!isConnected) {
+            document.getElementById('timeSyncStatus').innerText = "Error: Connect Device First";
+            return;
+        }
+
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = now.getMonth() + 1; // JS months are 0-11
+        const d = now.getDate();
+        const h = now.getHours();
+        const min = now.getMinutes();
+        const s = now.getSeconds();
+
+        // Format command: "time YYYY MM DD HH MM SS"
+        const cmd = `time ${y} ${m} ${d} ${h} ${min} ${s}`;
+        
+        document.getElementById('timeSyncStatus').innerText = "Sending: " + cmd;
+        await sendCommand(cmd);
+    });
 </script>
 </body>
 </html>

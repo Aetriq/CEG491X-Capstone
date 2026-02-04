@@ -9,5 +9,6 @@
         "esp_timer.h": "c",
         "queue.h": "c",
         "stdio.h": "c"
-    }
+    },
+    "idf.currentSetup": "C:\\Users\\ALEXD\\esp\\v5.5.1\\esp-idf"
 }

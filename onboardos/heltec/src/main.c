@@ -34,8 +34,8 @@
 #define PIN_MODE_BT GPIO_NUM_0  // Middle Position
 #define PIN_MODE_REC GPIO_NUM_1  // Right Position
 
-#define PIN_LED_BT GPIO_NUM_40
-#define PIN_LED_REC GPIO_NUM_38
+#define PIN_LED_BT GPIO_NUM_35
+#define PIN_LED_REC GPIO_NUM_37
 
 #define WAKEUP_BITMASK ((1ULL << PIN_MODE_BT) | (1ULL << PIN_MODE_REC))
 

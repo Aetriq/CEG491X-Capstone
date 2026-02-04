@@ -94,6 +94,7 @@
 #include "esp_timer.h"
 
 #include <errno.h>
+#include "rtc_module.h"
 
 /* ==================== 2.0 Pin mappings ====================  */
 
@@ -119,8 +120,8 @@
 #define SD_CS_PIN       GPIO_NUM_15
 
 /* LED Indicators */
-#define GPIO_RECORDING_LED  GPIO_NUM_39
-#define GPIO_NORMALOP_LED GPIO_NUM_38 
+#define GPIO_RECORDING_LED  GPIO_NUM_36
+#define GPIO_NORMALOP_LED GPIO_NUM_37 
 
 #define PIN_MODE_REC   GPIO_NUM_1
 
@@ -472,7 +473,8 @@ void recording_mode_main(void) {
     led_recording_init();
     spi_adxl_init();
     int_pin_init();
-    
+    rtc_init_and_sync();
+
     // ADXL Setup
     vTaskDelay(pdMS_TO_TICKS(50)); 
     adxl_write_reg(ADXL362_REG_SOFT_RESET, 0x52); 
@@ -503,18 +505,14 @@ void recording_mode_main(void) {
         // 1. Check for Motion Trigger (ADXL pulls INT1 High)
         if (gpio_get_level(PIN_NUM_INT1) == 1) {
             
-            // 2. RESTORED: Debounce / Hold Time Check (0.5s)
-            // We ensure the motion is deliberate, not just a glitch
             int64_t start_wait = esp_timer_get_time();
             bool valid_trigger = true;
             
             while ((esp_timer_get_time() - start_wait) < WAKEUP_HOLD_TIME_US) {
-                // If pin drops low during the wait, it's a false alarm
                 if (gpio_get_level(PIN_NUM_INT1) == 0) {
                     valid_trigger = false;
                     break;
                 }
-                // Also check if user switched modes during debounce
                 if (gpio_get_level(PIN_MODE_REC) != 0) {
                     valid_trigger = false;
                     break;
@@ -534,18 +532,15 @@ void recording_mode_main(void) {
 
                 if (sd_ok) {
                     /* 4. RESTORED: Blink Warning Pattern (5 Seconds) */
-                    // We loop 5 times, blinking the LED. 
-                    // We check PIN_MODE_REC inside so the user can abort by sliding the switch.
                     bool aborted = false;
                     for(int i = STARTUP_DELAY_SEC; i > 0; i--) {
                         if (gpio_get_level(PIN_MODE_REC) != 0) { aborted = true; break; }
-                        blink_led(1, 200); // Calls your helper function
-                        vTaskDelay(pdMS_TO_TICKS(600)); 
+                        blink_led(1, 200);
+                        vTaskDelay(pdMS_TO_TICKS(250)); 
                     }
 
                     if (!aborted) {
                         /* 5. RESTORED: Fixed Time Recording (30 Seconds) */
-                        // We use a timer here instead of checking INT1 pin state
                         
                         uint32_t session_id = get_and_update_index();
                         char filename[64];
