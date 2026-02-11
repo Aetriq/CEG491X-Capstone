@@ -151,7 +151,24 @@ function getEvents(timelineId) {
     });
 }
 
-function addTranscriptionTimeline(segments, audioFilePath) {
+/**
+ * Format a Date as recorded time string (HH:MM - when the audio was recorded).
+ * @param {Date} date
+ * @returns {string} e.g. "14:30"
+ */
+function formatRecordedTime(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const h = d.getHours();
+  const m = d.getMinutes();
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/**
+ * @param {Array} segments - [{ start, end, text }]
+ * @param {string} audioFilePath
+ * @param {Date|number} [recordingStartTime] - when the recording started (file mtime or now). If omitted, time column = mm:ss into audio.
+ */
+function addTranscriptionTimeline(segments, audioFilePath, recordingStartTime) {
   const id = nextTimelineId++;
   const now = new Date().toISOString();
   const timeline = {
@@ -161,26 +178,31 @@ function addTranscriptionTimeline(segments, audioFilePath) {
     created_at: now,
     updated_at: now
   };
-  const events = (segments || []).map((seg, i) => {
-    const start = seg.start != null ? seg.start : 0;
-    const end = seg.end != null ? seg.end : start + 1;
-    const mins = Math.floor(start / 60);
-    const secs = Math.floor(start % 60);
-    const timeStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    return {
-      id: id * 1000 + i,
-      timeline_id: id,
-      event_number: i + 1,
-      time: timeStr,
-      transcript: seg.text || '',
-      latitude: null,
-      longitude: null,
-      audio_file_path: audioFilePath,
-      audio_duration: Math.round((end - start) * 1000),
-      created_at: now,
-      updated_at: now
-    };
-  });
+  const baseTime = recordingStartTime != null
+    ? (recordingStartTime instanceof Date ? recordingStartTime : new Date(recordingStartTime))
+    : null;
+  const segs = segments || [];
+  const fullTranscript = segs.map(s => s.text || '').join(' ').trim() || '';
+  const totalDurationSec = segs.length ? Math.max(...segs.map(s => s.end != null ? s.end : 0)) : 0;
+  const timeStr = baseTime
+    ? formatRecordedTime(baseTime)
+    : '00:00';
+  const events = [{
+    id: id * 1000,
+    timeline_id: id,
+    event_number: 1,
+    time: timeStr,
+    transcript: fullTranscript,
+    latitude: null,
+    longitude: null,
+    audio_file_path: audioFilePath,
+    audio_duration: Math.round(totalDurationSec * 1000),
+    created_at: now,
+    updated_at: now
+  }];
+  if (baseTime) {
+    timeline.recording_start_time = baseTime.toISOString();
+  }
   transcriptionTimelines[id] = { timeline, events };
   return id;
 }

@@ -25,11 +25,23 @@ python filter_audio.py input.wav output.wav [cutoff] [order] [lowpass|highpass]
 
 ## transcribe_audio.py
 
-Transcribes audio using OpenAI Whisper and outputs JSON segments for the timeline.
+Transcribes audio using **ElevenLabs** (if `ELEVENLABS_API_KEY` is set), then **OpenAI API**, then **local Whisper**.
 
-**Dependencies:** `openai-whisper`, `torch`
+**ElevenLabs (tried first):** Set `ELEVENLABS_API_KEY` in the backend `.env` file. Uses `scribe_v2` model. Install: `pip install elevenlabs`.
+
+**OpenAI API:** Set `OPENAI_API_KEY` in `.env` to use Whisper API if ElevenLabs is not set or fails. Install: `pip install openai`.
+
+**Local Whisper:** If no API key is set or both APIs fail, uses local `openai-whisper`. Dependencies: `openai-whisper`, `torch`.
 
 ```bash
+# ElevenLabs: add ELEVENLABS_API_KEY=... to webapp/backend/.env
+pip install elevenlabs
+python transcribe_audio.py audio.wav --output_json out.json
+
+# Or OpenAI: add OPENAI_API_KEY=sk-... to .env
+pip install openai
+
+# Or local Whisper (no API):
 pip install openai-whisper torch
 python transcribe_audio.py audio.wav --model base --output_json out.json
 ```
@@ -43,10 +55,14 @@ Output JSON format:
 {
   "text": "full transcript",
   "language": "en",
-  "segments": [
-    { "start": 0.0, "end": 1.5, "text": "Hello" }
-  ]
+  "segments": [{ "start": 0.0, "end": 1.5, "text": "Hello" }]
 }
 ```
 
-The backend pipeline runs: **upload → filter_audio.py → transcribe_audio.py → create timeline → redirect to timeline page.**
+## Backend API (audio routes)
+
+- **POST /api/audio/transcribe** – Upload audio → filter → transcribe. Returns JSON only: `{ success, transcription, segments, language, duration }`. No file downloads.
+- **POST /api/audio/filter-and-transcribe** – Upload → filter → transcribe → create timeline. Returns `{ timelineId, events }`.
+- **POST /api/audio/from-local** – Same pipeline using a **local file path** (no upload). Body: `{ "filePath": "relative/path/within/base.wav" }`. The path must be under `LOCAL_AUDIO_BASE` (default: backend `uploads` folder). Returns `{ timelineId, events }`.
+
+Optional env: `LOCAL_AUDIO_BASE` – directory under which from-local `filePath` is resolved (default: `uploads` next to backend).

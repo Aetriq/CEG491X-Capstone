@@ -6,6 +6,7 @@ import AudioPlayer from '../components/AudioPlayer';
 import './TimelineView.css';
 
 const API_URL = '/api';
+const CACHE_KEY_PREFIX = 'echolog_timeline_';
 
 function TimelineView() {
   const { id } = useParams();
@@ -16,19 +17,52 @@ function TimelineView() {
   const [loading, setLoading] = useState(true);
   const [editingEvent, setEditingEvent] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [isFromCache, setIsFromCache] = useState(false);
+  const [savingToDb, setSavingToDb] = useState(false);
 
   useEffect(() => {
     loadTimeline();
   }, [id]);
 
   const loadTimeline = async () => {
+    setLoading(true);
     try {
+      const cacheKey = `${CACHE_KEY_PREFIX}${id}`;
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const { timeline: t, events: e } = JSON.parse(cached);
+        setTimeline(t);
+        const raw = e || [];
+        const recordingStart = t?.recording_start_time ? new Date(t.recording_start_time).getTime() : null;
+        const formatRecordedTime = (ms) => {
+          const d = new Date(ms);
+          return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        };
+        const normalized = raw.map((ev, i) => {
+          if (ev.event_number != null && ev.time != null) return ev;
+          const start = ev.start != null ? ev.start : 0;
+          const timeStr = ev.time ?? (recordingStart != null
+            ? formatRecordedTime(recordingStart + start * 1000)
+            : `${String(Math.floor(start / 60)).padStart(2, '0')}:${String(Math.floor(start % 60)).padStart(2, '0')}`);
+          return {
+            ...ev,
+            id: ev.id ?? i,
+            event_number: ev.event_number ?? i + 1,
+            time: timeStr,
+            transcript: ev.transcript ?? ev.text ?? ''
+          };
+        });
+        setEvents(normalized);
+        setIsFromCache(true);
+        setLoading(false);
+        return;
+      }
       const response = await axios.get(`${API_URL}/timelines/${id}`);
       setTimeline(response.data.timeline);
       setEvents(response.data.timeline.events || []);
+      setIsFromCache(false);
     } catch (error) {
       console.error('Error loading timeline:', error);
-      // If error, show a message but don't block the UI
       if (error.response?.status === 404) {
         setLoading(false);
       }
@@ -62,6 +96,46 @@ function TimelineView() {
     } catch (error) {
       console.error('Error saving timeline:', error);
       alert('Error saving timeline: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  const handleSaveToDatabase = async () => {
+    if (!user) {
+      alert('Please log in to save this timeline to the database.');
+      navigate('/login');
+      return;
+    }
+    setSavingToDb(true);
+    try {
+      const payload = {
+        deviceId: timeline?.device_id || null,
+        events: events.map((e) => ({
+          eventNumber: e.event_number ?? e.eventNumber,
+          time: e.time,
+          transcript: e.transcript || '',
+          latitude: e.latitude ?? null,
+          longitude: e.longitude ?? null,
+          audioFilePath: e.audio_file_path ?? e.audioFilePath ?? null,
+          audioDuration: e.audio_duration ?? e.audioDuration ?? null
+        }))
+      };
+      const response = await axios.post(`${API_URL}/timelines/generate`, payload);
+      const newTimeline = response.data.timeline;
+      const newId = newTimeline?.id;
+      localStorage.removeItem(`${CACHE_KEY_PREFIX}${id}`);
+      setIsFromCache(false);
+      if (newId != null && newId !== id) {
+        navigate(`/timeline/${newId}`, { replace: true });
+      } else {
+        setTimeline(newTimeline);
+        setEvents(newTimeline?.events || events);
+      }
+      alert(response.data.message || 'Timeline saved to database.');
+    } catch (error) {
+      console.error('Error saving to database:', error);
+      alert('Error saving to database: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setSavingToDb(false);
     }
   };
 
@@ -129,9 +203,23 @@ function TimelineView() {
           </svg>
           Download CSV
         </button>
-        <button onClick={handleSave} className="save-btn">
-          Save Timeline
-        </button>
+        {isFromCache ? (
+          <div className="save-db-wrap">
+            <button
+              onClick={handleSaveToDatabase}
+              disabled={savingToDb}
+              className="save-btn save-db-btn"
+            >
+              {savingToDb ? 'Saving…' : 'Save to database'}
+            </button>
+            <span className="cache-hint">Unsaved (from transcription).</span>
+            <span className="cache-hint">Log in and save to store in database.</span>
+          </div>
+        ) : (
+          <button onClick={handleSave} className="save-btn">
+            Save Timeline
+          </button>
+        )}
       </div>
 
       <div className="timeline-layout">
@@ -177,8 +265,8 @@ function TimelineView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {events.map((event) => (
-                    <tr key={event.id}>
+                  {events.map((event, index) => (
+                    <tr key={event.id != null ? event.id : `event-${index}`}>
                       <td><span className="rownum">{event.event_number}</span></td>
                       <td className="time">{event.time}</td>
                       <td className="transcript">

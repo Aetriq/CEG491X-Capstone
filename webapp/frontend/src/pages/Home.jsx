@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Home.css';
 
@@ -6,6 +6,78 @@ function Home() {
   const navigate = useNavigate();
   const [bleConnectionStatus, setBleConnectionStatus] = useState('Disconnected (Bluetooth)');
   const [bleDeviceName, setBleDeviceName] = useState('Not Connected');
+  const [localUploadFile, setLocalUploadFile] = useState(null);
+  const [localUploadStatus, setLocalUploadStatus] = useState('No file selected');
+  const [localUploadLoading, setLocalUploadLoading] = useState(false);
+  const localFileInputRef = useRef(null);
+
+  const formatBytes = (bytes) => {
+    if (!bytes || bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+  };
+
+  const onLocalFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setLocalUploadFile(file);
+      setLocalUploadStatus(`${file.name} — ${formatBytes(file.size)}`);
+    } else {
+      setLocalUploadFile(null);
+      setLocalUploadStatus('No file selected');
+    }
+  };
+
+  const onLocalTranscribe = async () => {
+    if (!localUploadFile) return;
+    setLocalUploadLoading(true);
+    setLocalUploadStatus('Processing…');
+    try {
+      const formData = new FormData();
+      formData.append('audio', localUploadFile, localUploadFile.name);
+      const response = await fetch('/api/audio/filter-and-transcribe', {
+        method: 'POST',
+        body: formData
+      });
+      const text = await response.text();
+      let result = {};
+      try {
+        result = text ? JSON.parse(text) : {};
+      } catch (_) {
+        result = {};
+      }
+      if (!response.ok) {
+        throw new Error(result.error || response.statusText || 'Transcription failed');
+      }
+      const timelineId = result.timelineId || 1;
+      const events = result.events || [];
+      const timeline = {
+        id: timelineId,
+        device_id: null,
+        date_generated: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        recording_start_time: result.recording_start_time || null
+      };
+      try {
+        localStorage.setItem(
+          `echolog_timeline_${timelineId}`,
+          JSON.stringify({ timeline, events })
+        );
+      } catch (e) {
+        console.warn('Cache write failed:', e);
+      }
+      setLocalUploadStatus('Done — opening timeline');
+      navigate(`/timeline/${timelineId}`);
+    } catch (error) {
+      console.error('Local transcribe error:', error);
+      setLocalUploadStatus('Error: ' + (error.message || 'Unknown error'));
+    } finally {
+      setLocalUploadLoading(false);
+    }
+  };
 
   useEffect(() => {
     // Web Bluetooth UUIDs (from your original HTML mockup)
@@ -318,9 +390,25 @@ function Home() {
           const msg = result.error || response.statusText || 'Transcription failed';
           throw new Error(msg);
         }
-        
-        // Navigate to timeline with the transcribed data
-        navigate(`/timeline/${result.timelineId || 1}`);
+        const timelineId = result.timelineId || 1;
+        const events = result.events || [];
+        const timeline = {
+          id: timelineId,
+          device_id: null,
+          date_generated: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          recording_start_time: result.recording_start_time || null
+        };
+        try {
+          localStorage.setItem(
+            `echolog_timeline_${timelineId}`,
+            JSON.stringify({ timeline, events })
+          );
+        } catch (e) {
+          console.warn('Cache write failed:', e);
+        }
+        navigate(`/timeline/${timelineId}`);
       } catch (error) {
         console.error('Transcription error:', error);
         alert('Error transcribing audio: ' + (error.message || 'Unknown error'));
@@ -449,6 +537,43 @@ function Home() {
                 TRANSCRIBE
               </button>
             </div>
+          </div>
+        </div>
+
+        <div className="card local-upload-row">
+          <div className="card-header">
+            <div className="icon-box purple-icon">📁</div>
+            <div>
+              <h3>Local Upload</h3>
+              <p className="subtext">Upload an audio file from your computer to transcribe and open timeline</p>
+            </div>
+          </div>
+          <div className="info-line local-upload-status">
+            {localUploadStatus}
+          </div>
+          <div className="control-group">
+            <input
+              ref={localFileInputRef}
+              type="file"
+              accept="audio/*,.wav,.mp3,.ogg,.m4a"
+              onChange={onLocalFileChange}
+              style={{ display: 'none' }}
+            />
+            <button
+              type="button"
+              className="btn btn-orange"
+              onClick={() => localFileInputRef.current?.click()}
+            >
+              SELECT FILE
+            </button>
+            <button
+              type="button"
+              className="btn btn-green"
+              onClick={onLocalTranscribe}
+              disabled={!localUploadFile || localUploadLoading}
+            >
+              {localUploadLoading ? 'PROCESSING…' : 'TRANSCRIBE & OPEN TIMELINE'}
+            </button>
           </div>
         </div>
 

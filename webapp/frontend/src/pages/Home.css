@@ -237,6 +237,10 @@
   margin-bottom: 20px;
 }
 
+.local-upload-row {
+  margin-bottom: 20px;
+}
+
 .bottom-row {
   margin-bottom: 20px;
 }
@@ -304,6 +308,10 @@
 
 .teal-icon {
   background: linear-gradient(135deg, #00bcd4, #0097a7);
+}
+
+.purple-icon {
+  background: linear-gradient(135deg, #7b1fa2, #512da8);
 }
 
 h3 {
