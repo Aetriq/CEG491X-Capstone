@@ -1,12 +1,14 @@
-/**
-* ////////////////////////////////////////////////////////////////////
-* // _____     _           _                  ____ _____ ___  ____  //
-* //| ____|___| |__   ___ | |    ___   __ _  |  _ \_   _/ _ \/ ___| //
-* //|  _| / __| '_ \ / _ \| |   / _ \ / _` | | |_) || || | | \___ \ //
-* //| |__| (__| | | | (_) | |__| (_) | (_| | |  _ < | || |_| |___) |//
-* //|_____\___|_| |_|\___/|_____\___/ \__, | |_| \_\|_| \___/|____/ //
-* //                                  |___/                         //
-* ////////////////////////////////////////////////////////////////////
+/*
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│    _______   ________  ___  ___  ________  ___       ________  ________          ________  _________  ________  ________         │
+│   |\  ___ \ |\   ____\|\  \|\  \|\   __  \|\  \     |\   __  \|\   ____\        |\   __  \|\___   ___\\   __  \|\   ____\        │
+│   \ \   __/|\ \  \___|\ \  \\\  \ \  \|\  \ \  \    \ \  \|\  \ \  \___|        \ \  \|\  \|___ \  \_\ \  \|\  \ \  \___|_       │
+│    \ \  \_|/_\ \  \    \ \   __  \ \  \\\  \ \  \    \ \  \\\  \ \  \  ___       \ \   _  _\   \ \  \ \ \  \\\  \ \_____  \      │
+│     \ \  \_|\ \ \  \____\ \  \ \  \ \  \\\  \ \  \____\ \  \\\  \ \  \|\  \       \ \  \\  \|   \ \  \ \ \  \\\  \|____|\  \     │
+│      \ \_______\ \_______\ \__\ \__\ \_______\ \_______\ \_______\ \_______\       \ \__\\ _\    \ \__\ \ \_______\____\_\  \    │
+│       \|_______|\|_______|\|__|\|__|\|_______|\|_______|\|_______|\|_______|        \|__|\|__|    \|__|  \|_______|\_________\   │
+│                                                                                                                   \|_________|   │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 */
 
 /* Team EchoLog (Group 2) */
@@ -475,21 +477,18 @@ void recording_mode_main(void) {
     int_pin_init();
     rtc_init_and_sync();
 
-    // ADXL Setup
     vTaskDelay(pdMS_TO_TICKS(50)); 
     adxl_write_reg(ADXL362_REG_SOFT_RESET, 0x52); 
     vTaskDelay(pdMS_TO_TICKS(50)); 
     
-    // Configure Thresholds (Activity: 1800mg, Inactivity: 1500mg)
     adxl_setup_activity(1800, 10);
     adxl_setup_inactivity(1500, 10);
     
-    // Map AWAKE status to INT1 Pin (Pin goes HIGH on motion)
     adxl_write_reg(ADXL362_REG_INTMAP1, 0x40); 
-    adxl_write_reg(ADXL362_REG_ACT_INACT_CTL, 0x35); // Loop Mode
+    adxl_write_reg(ADXL362_REG_ACT_INACT_CTL, 0x35); 
     
     uint8_t power_ctl = adxl_read_reg(ADXL362_REG_POWER_CTL);
-    power_ctl |= 0x04; // Measurement Mode
+    power_ctl |= 0x04; 
     adxl_write_reg(ADXL362_REG_POWER_CTL, power_ctl);
     adxl_begin_measure();
     vTaskDelay(pdMS_TO_TICKS(50));
@@ -497,12 +496,10 @@ void recording_mode_main(void) {
     init_microphone();
 
     ESP_LOGI(TAG, "Mode: STANDBY (Waiting for Motion or Switch Change)...");
-    gpio_set_level(GPIO_NORMALOP_LED, 1); // Indicate System Ready
+    gpio_set_level(GPIO_NORMALOP_LED, 1); 
 
-    /* ------ STANDBY LOOP (Runs while Slider is in Recording Mode) ------ */
     while (gpio_get_level(PIN_MODE_REC) == 0) {
         
-        // 1. Check for Motion Trigger (ADXL pulls INT1 High)
         if (gpio_get_level(PIN_NUM_INT1) == 1) {
             
             int64_t start_wait = esp_timer_get_time();
@@ -523,7 +520,6 @@ void recording_mode_main(void) {
             if (valid_trigger) {
                 ESP_LOGI(TAG, "Motion Confirmed! Starting Sequence...");
 
-                /* 3. Initialize SD Card */
                 bool sd_ok = false;
                 for (int attempt = 1; attempt <= 3; attempt++) {
                     if (init_sd_card()) { sd_ok = true; break; }
@@ -531,7 +527,6 @@ void recording_mode_main(void) {
                 }
 
                 if (sd_ok) {
-                    /* 4. RESTORED: Blink Warning Pattern (5 Seconds) */
                     bool aborted = false;
                     for(int i = STARTUP_DELAY_SEC; i > 0; i--) {
                         if (gpio_get_level(PIN_MODE_REC) != 0) { aborted = true; break; }
@@ -540,7 +535,6 @@ void recording_mode_main(void) {
                     }
 
                     if (!aborted) {
-                        /* 5. RESTORED: Fixed Time Recording (30 Seconds) */
                         
                         uint32_t session_id = get_and_update_index();
                         char filename[64];
@@ -550,21 +544,17 @@ void recording_mode_main(void) {
                         if (f) {
                             write_wav_header(f, 0);
                             
-                            // Alloc Buffers
                             int32_t *i2s_buffer = (int32_t *)calloc(SAMPLES_PER_READ, sizeof(int32_t));
                             int16_t *wav_buffer = (int16_t *)calloc(SAMPLES_PER_READ, sizeof(int16_t));
                             size_t bytes_to_read = SAMPLES_PER_READ * sizeof(int32_t);
                             size_t i2s_bytes_read = 0;
                             uint32_t total_bytes_written = 0;
                             
-                            gpio_set_level(GPIO_RECORDING_LED, 1); // Solid Red LED
+                            gpio_set_level(GPIO_RECORDING_LED, 1); 
                             
-                            // Timer Setup
                             int64_t end_time = esp_timer_get_time() + ((int64_t)RECORD_TIME_SEC * 1000000);
 
-                            // RECORD LOOP: Runs until time expires OR Switch is moved
                             while (esp_timer_get_time() < end_time) {
-                                // Safety Check: Abort if user moves switch
                                 if (gpio_get_level(PIN_MODE_REC) != 0) break;
 
                                 if (i2s_channel_read(g_rx_handle, i2s_buffer, bytes_to_read, &i2s_bytes_read, 100) == ESP_OK) {
@@ -575,7 +565,6 @@ void recording_mode_main(void) {
                                 }
                             }
 
-                            // Finish Up
                             gpio_set_level(GPIO_RECORDING_LED, 0); 
                             write_wav_header(f, total_bytes_written);
                             fclose(f);
@@ -585,18 +574,15 @@ void recording_mode_main(void) {
                         }
                     }
                     
-                    /* 6. Unmount SD */
                     esp_vfs_fat_sdcard_unmount(MOUNT_POINT, card);
                     spi_bus_free(SPI3_HOST);
                 }
             }
         }
         
-        // Small delay to prevent CPU hogging
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 
-    /* ------ EXIT CLEANUP ------ */
     gpio_set_level(GPIO_NORMALOP_LED, 0);
     ESP_LOGI(TAG, "Recording Mode Exiting to Main...");
 }

@@ -1,12 +1,14 @@
-/**
-* ////////////////////////////////////////////////////////////////////
-* // _____     _           _                  ____ _____ ___  ____  //
-* //| ____|___| |__   ___ | |    ___   __ _  |  _ \_   _/ _ \/ ___| //
-* //|  _| / __| '_ \ / _ \| |   / _ \ / _` | | |_) || || | | \___ \ //
-* //| |__| (__| | | | (_) | |__| (_) | (_| | |  _ < | || |_| |___) |//
-* //|_____\___|_| |_|\___/|_____\___/ \__, | |_| \_\|_| \___/|____/ //
-* //                                  |___/                         //
-* ////////////////////////////////////////////////////////////////////
+/*
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│    _______   ________  ___  ___  ________  ___       ________  ________          ________  _________  ________  ________         │
+│   |\  ___ \ |\   ____\|\  \|\  \|\   __  \|\  \     |\   __  \|\   ____\        |\   __  \|\___   ___\\   __  \|\   ____\        │
+│   \ \   __/|\ \  \___|\ \  \\\  \ \  \|\  \ \  \    \ \  \|\  \ \  \___|        \ \  \|\  \|___ \  \_\ \  \|\  \ \  \___|_       │
+│    \ \  \_|/_\ \  \    \ \   __  \ \  \\\  \ \  \    \ \  \\\  \ \  \  ___       \ \   _  _\   \ \  \ \ \  \\\  \ \_____  \      │
+│     \ \  \_|\ \ \  \____\ \  \ \  \ \  \\\  \ \  \____\ \  \\\  \ \  \|\  \       \ \  \\  \|   \ \  \ \ \  \\\  \|____|\  \     │
+│      \ \_______\ \_______\ \__\ \__\ \_______\ \_______\ \_______\ \_______\       \ \__\\ _\    \ \__\ \ \_______\____\_\  \    │
+│       \|_______|\|_______|\|__|\|__|\|_______|\|_______|\|_______|\|_______|        \|__|\|__|    \|__|  \|_______|\_________\   │
+│                                                                                                                   \|_________|   │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 */
 
 /* Team EchoLog (Group 2) */
@@ -14,7 +16,7 @@
 /* School of Electrical Engineering and Computer Science at the University of Ottawa */
 
 /* Onboard OS for ESP32-S3 based Heltec IOT Wireless Tracker */
-/* Bluetooth Mode */
+/* Bluetooth Mode Logic */
 
 /* ========== HARDWARE OVERVIEW ========== 
  * BLE Module: ESP32-S3 built-in
@@ -27,16 +29,15 @@
  * Author(s): Gordon, A., Spacek, A., Liu, M., Nyannak, D., Escalante, A. */
 
 /* ========== TABLE OF CONTENTS ========== 
- * 0.0 Premable
  * 1.0 Headers
  * 2.0 Pin mappings
  * 3.0 Definitions
- *  3.5 Public & Static Variables
  * 4.0 Functions
  * 5.0 Main Method 
  */
 
-/* ==================== 1.0 Headers ====================  */
+ /* ==================== 1.0 Headers ====================  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -110,7 +111,7 @@ bool cmd_ready = false;
 
 static sdmmc_card_t *card;
 
-/* ==================== 4.0 Bluetooth & SD Functions ==================== */
+/* ==================== 4.0 Functions ==================== */
 
 esp_err_t send_notification(uint8_t *data, size_t len) {
     if (device_connected) {
@@ -172,8 +173,7 @@ void process_command_task(void *pvParameters) {
             else if (strncmp(pending_cmd, "time ", 5) == 0) {
                 int y, m, d, hh, mm, ss;
                 if (sscanf(pending_cmd + 5, "%d %d %d %d %d %d", &y, &m, &d, &hh, &mm, &ss) == 6) {
-                    rtc_set_time_manual(y, m, d, hh, mm, ss);
-                    
+                    rtc_set_time_manual(y, m, d, hh, mm, ss);   
                     char reply[20];
                     int len = snprintf(reply, sizeof(reply), "SET:%04d%02d%02d", y, m, d);
                     send_notification((uint8_t*)reply, len);
@@ -323,14 +323,10 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
 void bluetooth_mode_main(void) {
     esp_log_level_set("*", ESP_LOG_NONE);
 
-    // Hardware Init
     gpio_reset_pin(GPIO_BT_LED);
     gpio_set_direction(GPIO_BT_LED, GPIO_MODE_OUTPUT);
     gpio_set_level(GPIO_BT_LED, 0);
 
-    // Re-init NVS/SD/BT only if not already active (simplified for this context)
-    // Note: repeatedly initing/deiniting BT stack can be tricky in ESP-IDF.
-    // For stability, we often just leave BT on, but here is the full cycle logic:
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -351,24 +347,16 @@ void bluetooth_mode_main(void) {
     TaskHandle_t taskHandle = NULL;
     xTaskCreate(process_command_task, "sd_task", 4096 * 2, NULL, 5, &taskHandle);
 
-    // --- SUPERVISOR LOOP ---
-    // Stay here ONLY while the switch is still in BT position
     while (gpio_get_level(PIN_MODE_BT) == 0) {
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
-
-    // --- GRACEFUL SHUTDOWN ---
-    // 1. Stop the logic task
     if(taskHandle != NULL) vTaskDelete(taskHandle);
 
-    // 2. Close any open files
     if(transfer_file) { fclose(transfer_file); transfer_file = NULL; }
 
-    // 3. Unmount SD
     esp_vfs_fat_sdcard_unmount(MOUNT_POINT, card);
-    spi_bus_free(SPI2_HOST); // Free bus so Recording Mode can use it
+    spi_bus_free(SPI2_HOST); 
 
-    // 4. Deinit Bluetooth (Critical to free memory for Recording Mode)
     esp_bluedroid_disable();
     esp_bluedroid_deinit();
     esp_bt_controller_disable();

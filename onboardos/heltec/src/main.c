@@ -1,12 +1,14 @@
-/**
-* ////////////////////////////////////////////////////////////////////
-* // _____     _           _                  ____ _____ ___  ____  //
-* //| ____|___| |__   ___ | |    ___   __ _  |  _ \_   _/ _ \/ ___| //
-* //|  _| / __| '_ \ / _ \| |   / _ \ / _` | | |_) || || | | \___ \ //
-* //| |__| (__| | | | (_) | |__| (_) | (_| | |  _ < | || |_| |___) |//
-* //|_____\___|_| |_|\___/|_____\___/ \__, | |_| \_\|_| \___/|____/ //
-* //                                  |___/                         //
-* ////////////////////////////////////////////////////////////////////
+/*
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│    _______   ________  ___  ___  ________  ___       ________  ________          ________  _________  ________  ________         │
+│   |\  ___ \ |\   ____\|\  \|\  \|\   __  \|\  \     |\   __  \|\   ____\        |\   __  \|\___   ___\\   __  \|\   ____\        │
+│   \ \   __/|\ \  \___|\ \  \\\  \ \  \|\  \ \  \    \ \  \|\  \ \  \___|        \ \  \|\  \|___ \  \_\ \  \|\  \ \  \___|_       │
+│    \ \  \_|/_\ \  \    \ \   __  \ \  \\\  \ \  \    \ \  \\\  \ \  \  ___       \ \   _  _\   \ \  \ \ \  \\\  \ \_____  \      │
+│     \ \  \_|\ \ \  \____\ \  \ \  \ \  \\\  \ \  \____\ \  \\\  \ \  \|\  \       \ \  \\  \|   \ \  \ \ \  \\\  \|____|\  \     │
+│      \ \_______\ \_______\ \__\ \__\ \_______\ \_______\ \_______\ \_______\       \ \__\\ _\    \ \__\ \ \_______\____\_\  \    │
+│       \|_______|\|_______|\|__|\|__|\|_______|\|_______|\|_______|\|_______|        \|__|\|__|    \|__|  \|_______|\_________\   │
+│                                                                                                                   \|_________|   │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 */
 
 /* Team EchoLog (Group 2) */
@@ -19,8 +21,13 @@
 /* Author(s): Gordon, A., Spacek, A., Liu, M., Nyannak, D., Escalante, A. */
 
 /* ========== TABLE OF CONTENTS ========== 
-
+ * 1.0 Headers
+ * 2.0 Pin mappings
+ * 3.0 Definitions
+ * 4.0 Main Method 
  */
+
+ /* ==================== 1.0 Headers ====================  */
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -31,14 +38,17 @@
 #include "bluetooth_mode.h"
 #include "recording_mode.h"
 
-#define PIN_MODE_BT GPIO_NUM_0  // Middle Position
-#define PIN_MODE_REC GPIO_NUM_1  // Right Position
+/* ==================== 2.0 Pin Mappings ==================== */
+#define PIN_MODE_BT GPIO_NUM_0  
+#define PIN_MODE_REC GPIO_NUM_1  
 
 #define PIN_LED_BT GPIO_NUM_35
 #define PIN_LED_REC GPIO_NUM_37
 
+/* ==================== 3.0 Global Definitions & Variables ==================== */
 #define WAKEUP_BITMASK ((1ULL << PIN_MODE_BT) | (1ULL << PIN_MODE_REC))
 
+/* ==================== 4.0 Main Method ==================== */
 void app_main(void) {
     gpio_reset_pin(PIN_LED_REC); gpio_reset_pin(PIN_LED_BT);
     gpio_set_direction(PIN_LED_REC, GPIO_MODE_OUTPUT); gpio_set_direction(PIN_LED_BT, GPIO_MODE_OUTPUT);
@@ -54,7 +64,6 @@ void app_main(void) {
     vTaskDelay(pdMS_TO_TICKS(250));
 
     while (1) {
-        // 1. Check PIN_MODE_BT (Active Low)
         if (gpio_get_level(PIN_MODE_BT) == 0) {
             vTaskDelay(pdMS_TO_TICKS(500)); 
             
@@ -65,7 +74,6 @@ void app_main(void) {
             } 
             else { break; } 
         } 
-        // 2. Check PIN_MODE_REC (Active Low)
         else if (gpio_get_level(PIN_MODE_REC) == 0) {
             vTaskDelay(pdMS_TO_TICKS(500)); 
             
@@ -76,7 +84,6 @@ void app_main(void) {
             } 
             else { break; }
         } 
-        // 3. Neither Active -> Sleep
         else {
             gpio_set_level(PIN_LED_REC, 0);
             gpio_set_level(PIN_LED_BT, 0);
@@ -85,8 +92,6 @@ void app_main(void) {
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 
-    // Go to Deep Sleep
-    // We only reach here if the 'break' statement above was hit. 
     if (rtc_gpio_is_valid_gpio(PIN_MODE_REC)) {
         rtc_gpio_pullup_en(PIN_MODE_REC);
         rtc_gpio_pulldown_dis(PIN_MODE_REC);
