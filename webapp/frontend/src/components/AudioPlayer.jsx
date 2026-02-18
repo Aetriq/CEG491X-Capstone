@@ -3,7 +3,7 @@ import './AudioPlayer.css';
 
 const API_URL = '/api';
 
-function AudioPlayer({ eventId }) {
+function AudioPlayer({ eventId, audioFilePath }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -42,9 +42,17 @@ function AudioPlayer({ eventId }) {
       audio.pause();
     } else {
       setLoading(true);
-      audio.src = `${API_URL}/audio/${eventId}`;
+      // Build audio URL: use filePath query parameter if available (for cached timelines)
+      let audioUrl = `${API_URL}/audio/${eventId}`;
+      if (audioFilePath) {
+        // Extract relative path from absolute path if needed
+        // Backend expects path relative to uploads directory or absolute path
+        audioUrl += `?filePath=${encodeURIComponent(audioFilePath)}`;
+      }
+      audio.src = audioUrl;
       audio.play().catch(err => {
         console.error('Error playing audio:', err);
+        console.error('Audio URL attempted:', audioUrl);
         setLoading(false);
       });
     }

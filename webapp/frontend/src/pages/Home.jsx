@@ -2,14 +2,188 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Home.css';
 
+// Global transcription queue so multiple audio files are processed sequentially
+let transcriptionQueue = Promise.resolve(null);
+
+async function transcribeAudioQueued(audioFile, filename) {
+  transcriptionQueue = transcriptionQueue.then(async () => {
+    try {
+      // Quick health check before making the request
+      try {
+        const healthController = new AbortController();
+        const healthTimeout = setTimeout(() => healthController.abort(), 5000); // 5 second timeout
+        
+        const healthCheck = await fetch('/api/health', { 
+          method: 'GET',
+          signal: healthController.signal
+        });
+        
+        clearTimeout(healthTimeout);
+        
+        if (!healthCheck.ok) {
+          throw new Error('Backend health check failed');
+        }
+      } catch (healthError) {
+        if (healthError.name === 'AbortError') {
+          throw new Error('Backend server health check timed out. Server may be overloaded or not responding.');
+        }
+        throw new Error('Backend server is not running or not accessible. Please ensure the backend server is running on port 3001.');
+      }
+
+      const formData = new FormData();
+      // Provide a filename when possible so the backend can persist it meaningfully
+      if (filename) {
+        formData.append('audio', audioFile, filename);
+      } else if (audioFile && audioFile.name) {
+        formData.append('audio', audioFile, audioFile.name);
+      } else {
+        formData.append('audio', audioFile);
+      }
+
+      const response = await fetch('/api/audio/filter-and-transcribe', {
+        method: 'POST',
+        body: formData
+      });
+
+      // For robustness, mirror the existing \"read as text then JSON\" behaviour
+      const text = await response.text();
+      let result = {};
+      try {
+        result = text ? JSON.parse(text) : {};
+      } catch (_) {
+        result = {};
+      }
+
+      if (!response.ok) {
+        const errorMsg = result.error || response.statusText || 'Transcription failed';
+        const statusCode = response.status;
+        throw new Error(`Internal Server Error (${statusCode}): ${errorMsg}`);
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Transcription error (queued):', error);
+      throw error;
+    }
+  });
+
+  return transcriptionQueue;
+}
+
+async function appendAudioQueued(timelineId, audioFile, filename) {
+  transcriptionQueue = transcriptionQueue.then(async () => {
+    try {
+      // Quick health check before making the request
+      try {
+        const healthController = new AbortController();
+        const healthTimeout = setTimeout(() => healthController.abort(), 5000); // 5 second timeout
+        
+        const healthCheck = await fetch('/api/health', { 
+          method: 'GET',
+          signal: healthController.signal
+        });
+        
+        clearTimeout(healthTimeout);
+        
+        if (!healthCheck.ok) {
+          throw new Error('Backend health check failed');
+        }
+      } catch (healthError) {
+        if (healthError.name === 'AbortError') {
+          throw new Error('Backend server health check timed out. Server may be overloaded or not responding.');
+        }
+        throw new Error('Backend server is not running or not accessible. Please ensure the backend server is running on port 3001.');
+      }
+
+      const formData = new FormData();
+      // Provide a filename when possible so the backend can persist it meaningfully
+      if (filename) {
+        formData.append('audio', audioFile, filename);
+      } else if (audioFile && audioFile.name) {
+        formData.append('audio', audioFile, audioFile.name);
+      } else {
+        formData.append('audio', audioFile);
+      }
+
+      let response;
+      try {
+        // Create abort controller for timeout handling
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minutes timeout
+        
+        response = await fetch(`/api/audio/append/${timelineId}`, {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+      } catch (fetchError) {
+        // Handle network errors (ECONNRESET, ECONNREFUSED, timeout, etc.)
+        if (fetchError.name === 'AbortError') {
+          throw new Error('Request timeout - transcription took too long (10 minutes)');
+        } else if (
+          fetchError.message?.includes('ECONNRESET') || 
+          fetchError.message?.includes('ECONNREFUSED') ||
+          fetchError.message?.includes('network') || 
+          fetchError.message?.includes('Failed to fetch') ||
+          fetchError.message?.includes('fetch')
+        ) {
+          const errorMsg = fetchError.message?.includes('ECONNREFUSED') 
+            ? 'Backend server is not running. Please start the backend server on port 3001.'
+            : 'Connection error - server may have crashed or restarted. Please check backend logs and try again.';
+          throw new Error(errorMsg);
+        }
+        throw fetchError;
+      }
+
+      // For robustness, mirror the existing \"read as text then JSON\" behaviour
+      let text;
+      try {
+        text = await response.text();
+      } catch (readError) {
+        throw new Error(`Failed to read response: ${readError.message}`);
+      }
+
+      let result = {};
+      try {
+        result = text ? JSON.parse(text) : {};
+      } catch (_) {
+        result = {};
+      }
+
+      if (!response.ok) {
+        const errorMsg = result.error || response.statusText || 'Append transcription failed';
+        const statusCode = response.status;
+        throw new Error(`Append failed (${statusCode}): ${errorMsg}`);
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Append transcription error (queued):', error);
+      console.error('Error details:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack
+      });
+      throw error;
+    }
+  });
+
+  return transcriptionQueue;
+}
+
 function Home() {
   const navigate = useNavigate();
   const [bleConnectionStatus, setBleConnectionStatus] = useState('Disconnected (Bluetooth)');
   const [bleDeviceName, setBleDeviceName] = useState('Not Connected');
-  const [localUploadFile, setLocalUploadFile] = useState(null);
-  const [localUploadStatus, setLocalUploadStatus] = useState('No file selected');
+  const [localUploadFiles, setLocalUploadFiles] = useState([]);
+  const [localUploadStatus, setLocalUploadStatus] = useState('No files selected');
   const [localUploadLoading, setLocalUploadLoading] = useState(false);
+  const [downloadTranscribeLoading, setDownloadTranscribeLoading] = useState(false);
+  const [downloadStatus, setDownloadStatus] = useState('Status: Idle');
   const localFileInputRef = useRef(null);
+  const downloadedFilesRef = useRef([]);
 
   const formatBytes = (bytes) => {
     if (!bytes || bytes === 0) return '0 Bytes';
@@ -20,57 +194,136 @@ function Home() {
   };
 
   const onLocalFileChange = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setLocalUploadFile(file);
-      setLocalUploadStatus(`${file.name} — ${formatBytes(file.size)}`);
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      setLocalUploadFiles(files);
+      const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+      if (files.length === 1) {
+        setLocalUploadStatus(`${files[0].name} — ${formatBytes(files[0].size)}`);
+      } else {
+        setLocalUploadStatus(`${files.length} files selected — ${formatBytes(totalSize)} total`);
+      }
     } else {
-      setLocalUploadFile(null);
-      setLocalUploadStatus('No file selected');
+      setLocalUploadFiles([]);
+      setLocalUploadStatus('No files selected');
     }
   };
 
   const onLocalTranscribe = async () => {
-    if (!localUploadFile) return;
+    if (!localUploadFiles || localUploadFiles.length === 0) return;
     setLocalUploadLoading(true);
-    setLocalUploadStatus('Processing…');
+    
+    const totalFiles = localUploadFiles.length;
+    let processedCount = 0;
+    let timelineId = null;
+    let allEvents = [];
+    const errors = [];
+
     try {
-      const formData = new FormData();
-      formData.append('audio', localUploadFile, localUploadFile.name);
-      const response = await fetch('/api/audio/filter-and-transcribe', {
-        method: 'POST',
-        body: formData
-      });
-      const text = await response.text();
-      let result = {};
-      try {
-        result = text ? JSON.parse(text) : {};
-      } catch (_) {
-        result = {};
+      // Process all files sequentially using the queue
+      for (let i = 0; i < localUploadFiles.length; i++) {
+        const file = localUploadFiles[i];
+        processedCount = i + 1;
+        
+        // Update status to show progress
+        if (totalFiles > 1) {
+          setLocalUploadStatus(`Processing ${processedCount}/${totalFiles}: ${file.name}…`);
+        } else {
+          setLocalUploadStatus(`Processing: ${file.name}…`);
+        }
+
+        try {
+          let result;
+          
+          // Determine if we need to create a new timeline or append
+          // Create new timeline if:
+          // 1. This is the first file (i === 0), OR
+          // 2. Previous file failed and we don't have a timeline yet
+          const shouldCreateNewTimeline = (i === 0) || !timelineId;
+          
+          if (shouldCreateNewTimeline) {
+            // Create new timeline (first file or fallback after failure)
+            result = await transcribeAudioQueued(file, file.name);
+            timelineId = result.timelineId || 1;
+            allEvents = result.events || [];
+            
+            if (i > 0) {
+              console.log(`[Frontend] First file failed, created new timeline ${timelineId} for file ${i + 1}`);
+            }
+          } else {
+            // Append to existing timeline
+            result = await appendAudioQueued(timelineId, file, file.name);
+            // Append returns updated events array
+            allEvents = result.events || allEvents;
+          }
+          
+          // Update timeline cache after each successful transcription
+          if (timelineId && result) {
+            const timeline = {
+              id: timelineId,
+              device_id: null,
+              date_generated: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              recording_start_time: result.recording_start_time || null
+            };
+            
+            try {
+              localStorage.setItem(
+                `echolog_timeline_${timelineId}`,
+                JSON.stringify({ timeline, events: allEvents })
+              );
+            } catch (e) {
+              console.warn('Cache write failed:', e);
+            }
+          }
+        } catch (error) {
+          console.error(`Error transcribing ${file.name}:`, error);
+          const errorMessage = error.message || 'Unknown error';
+          errors.push({ file: file.name, error: errorMessage });
+          
+          // If this was supposed to be the first file and it failed, log it
+          if (i === 0) {
+            console.warn(`[Frontend] First file failed, will try to create timeline with next file`);
+          }
+        }
       }
-      if (!response.ok) {
-        throw new Error(result.error || response.statusText || 'Transcription failed');
-      }
-      const timelineId = result.timelineId || 1;
-      const events = result.events || [];
-      const timeline = {
-        id: timelineId,
-        device_id: null,
-        date_generated: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        recording_start_time: result.recording_start_time || null
-      };
-      try {
-        localStorage.setItem(
-          `echolog_timeline_${timelineId}`,
-          JSON.stringify({ timeline, events })
+
+      // Final status and navigation - wait until ALL files are processed
+      const successCount = totalFiles - errors.length;
+      
+      if (errors.length === 0) {
+        // All succeeded
+        if (totalFiles > 1) {
+          setLocalUploadStatus(`Done — ${totalFiles} files transcribed and queued. Opening timeline…`);
+        } else {
+          setLocalUploadStatus('Done — opening timeline');
+        }
+        
+        // Navigate to the timeline with all events
+        if (timelineId) {
+          navigate(`/timeline/${timelineId}`);
+        } else {
+          setLocalUploadStatus('Error: Timeline was not created');
+        }
+      } else if (successCount > 0 && timelineId) {
+        // Some succeeded, some failed - but we have a timeline
+        const errorSummary = errors.length === 1 
+          ? `1 file failed (${errors[0].file})`
+          : `${errors.length} files failed`;
+        setLocalUploadStatus(
+          `Partial success: ${successCount}/${totalFiles} processed. ${errorSummary}. Opening timeline…`
         );
-      } catch (e) {
-        console.warn('Cache write failed:', e);
+        navigate(`/timeline/${timelineId}`);
+      } else {
+        // All failed or no timeline created
+        if (errors.length === totalFiles) {
+          const errorMsg = errors.map(e => `${e.file}: ${e.error}`).join('; ');
+          setLocalUploadStatus(`Error: All ${totalFiles} files failed. ${errorMsg}`);
+        } else {
+          setLocalUploadStatus(`Error: Failed to create timeline. ${errors.map(e => `${e.file}: ${e.error}`).join('; ')}`);
+        }
       }
-      setLocalUploadStatus('Done — opening timeline');
-      navigate(`/timeline/${timelineId}`);
     } catch (error) {
       console.error('Local transcribe error:', error);
       setLocalUploadStatus('Error: ' + (error.message || 'Unknown error'));
@@ -111,6 +364,7 @@ function Home() {
     const btnStartUpload = document.getElementById('btnStartUpload');
     const btnStopUpload = document.getElementById('btnStopUpload');
     const fileInput = document.getElementById('fileInput');
+    const btnTranscribe = document.getElementById('btnTranscribe');
 
     if (
       !connStatus ||
@@ -188,28 +442,60 @@ function Home() {
       btnStartUpload.disabled = true;
 
       fileSelect.innerHTML = '<option>Disconnected</option>';
+      
+      // Clear downloaded files on disconnect
+      downloadedFilesRef.current = [];
+      lastDownloadedBlob = null;
+      lastDownloadedFilename = null;
+      btnTranscribe.style.display = 'none';
+      dlStatus.innerText = 'Status: Disconnected';
+      setDownloadStatus('Status: Disconnected');
     }
 
     function finishDownload() {
       if (!isDownloading) return;
       const blob = new Blob(fileBuffer, { type: 'application/octet-stream' });
+      const filename = fileSelect.value || 'download.bin';
+      
+      // Add to downloaded files array (using ref since we're inside useEffect)
+      downloadedFilesRef.current = [...downloadedFilesRef.current, { 
+        blob, 
+        filename, 
+        downloadedAt: new Date().toISOString() 
+      }];
+      
+      // Keep for backward compatibility (single file mode)
       lastDownloadedBlob = blob;
-      lastDownloadedFilename = fileSelect.value || 'download.bin';
+      lastDownloadedFilename = filename;
       
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = lastDownloadedFilename;
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
       isDownloading = false;
-      dlStatus.innerText = 'Download Complete!';
       
-      // Show transcribe button if it's an audio file
-      if (lastDownloadedFilename.match(/\.(wav|mp3|ogg|m4a)$/i)) {
+      // Update status to show downloaded files count
+      const audioFiles = downloadedFilesRef.current.filter(f => 
+        f.filename.match(/\.(wav|mp3|ogg|m4a)$/i)
+      );
+      if (filename.match(/\.(wav|mp3|ogg|m4a)$/i)) {
+        const statusText = audioFiles.length > 1 
+          ? `Download Complete! ${audioFiles.length} audio file(s) ready to transcribe.`
+          : 'Download Complete! Ready to transcribe.';
+        dlStatus.innerText = statusText;
+        setDownloadStatus(statusText);
         btnTranscribe.style.display = 'inline-block';
         btnTranscribe.disabled = false;
+        if (audioFiles.length > 1) {
+          btnTranscribe.innerText = `TRANSCRIBE ${audioFiles.length} FILES`;
+        } else {
+          btnTranscribe.innerText = 'TRANSCRIBE';
+        }
       } else {
+        dlStatus.innerText = 'Download Complete!';
+        setDownloadStatus('Download Complete!');
         btnTranscribe.style.display = 'none';
       }
     }
@@ -369,51 +655,177 @@ function Home() {
     };
 
     const onTranscribeClick = async () => {
-      if (!lastDownloadedBlob || !lastDownloadedFilename) return;
+      // Get all downloaded audio files from ref
+      const audioFiles = downloadedFilesRef.current.filter(f => 
+        f.filename.match(/\.(wav|mp3|ogg|m4a)$/i)
+      );
       
+      // Fallback to single file mode if array is empty
+      if (audioFiles.length === 0) {
+        if (!lastDownloadedBlob || !lastDownloadedFilename) return;
+        audioFiles.push({ blob: lastDownloadedBlob, filename: lastDownloadedFilename });
+      }
+      
+      if (audioFiles.length === 0) return;
+      
+      setDownloadTranscribeLoading(true);
       btnTranscribe.disabled = true;
-      btnTranscribe.innerText = 'Processing...';
+      btnTranscribe.innerText = audioFiles.length > 1 ? `Processing ${audioFiles.length} files…` : 'Processing...';
       
+      const totalFiles = audioFiles.length;
+      let processedCount = 0;
+      let timelineId = null;
+      let allEvents = [];
+      const errors = [];
+
       try {
-        // Create FormData and send to backend for filtering and transcription
-        const formData = new FormData();
-        formData.append('audio', lastDownloadedBlob, lastDownloadedFilename);
-        
-        const response = await fetch('/api/audio/filter-and-transcribe', {
-          method: 'POST',
-          body: formData
-        });
-        
-        const result = await response.json().catch(() => ({}));
-        
-        if (!response.ok) {
-          const msg = result.error || response.statusText || 'Transcription failed';
-          throw new Error(msg);
+        // Process all files sequentially using the queue
+        for (let i = 0; i < audioFiles.length; i++) {
+          const file = audioFiles[i];
+          processedCount = i + 1;
+          
+          // Update status to show progress
+          if (totalFiles > 1) {
+            const statusText = `Processing ${processedCount}/${totalFiles}: ${file.filename}…`;
+            dlStatus.innerText = statusText;
+            setDownloadStatus(statusText);
+            btnTranscribe.innerText = `Processing ${processedCount}/${totalFiles}…`;
+          } else {
+            const statusText = `Processing: ${file.filename}…`;
+            dlStatus.innerText = statusText;
+            setDownloadStatus(statusText);
+            btnTranscribe.innerText = 'Processing...';
+          }
+
+          try {
+            let result;
+            
+            // Determine if we need to create a new timeline or append
+            const shouldCreateNewTimeline = (i === 0) || !timelineId;
+            
+            if (shouldCreateNewTimeline) {
+              // Create new timeline (first file or fallback after failure)
+              result = await transcribeAudioQueued(file.blob, file.filename);
+              timelineId = result.timelineId || 1;
+              allEvents = result.events || [];
+              
+              if (i > 0) {
+                console.log(`[Frontend] First file failed, created new timeline ${timelineId} for file ${i + 1}`);
+              }
+            } else {
+              // Append to existing timeline
+              result = await appendAudioQueued(timelineId, file.blob, file.filename);
+              // Append returns updated events array
+              allEvents = result.events || allEvents;
+            }
+            
+            // Update timeline cache after each successful transcription
+            if (timelineId && result) {
+              const timeline = {
+                id: timelineId,
+                device_id: null,
+                date_generated: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                recording_start_time: result.recording_start_time || null
+              };
+              
+              try {
+                localStorage.setItem(
+                  `echolog_timeline_${timelineId}`,
+                  JSON.stringify({ timeline, events: allEvents })
+                );
+              } catch (e) {
+                console.warn('Cache write failed:', e);
+              }
+            }
+          } catch (error) {
+            console.error(`Error transcribing ${file.filename}:`, error);
+            const errorMessage = error.message || 'Unknown error';
+            errors.push({ file: file.filename, error: errorMessage });
+            
+            // If this was supposed to be the first file and it failed, log it
+            if (i === 0) {
+              console.warn(`[Frontend] First file failed, will try to create timeline with next file`);
+            }
+          }
         }
-        const timelineId = result.timelineId || 1;
-        const events = result.events || [];
-        const timeline = {
-          id: timelineId,
-          device_id: null,
-          date_generated: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          recording_start_time: result.recording_start_time || null
-        };
-        try {
-          localStorage.setItem(
-            `echolog_timeline_${timelineId}`,
-            JSON.stringify({ timeline, events })
+
+        // Final status and navigation - wait until ALL files are processed
+        const successCount = totalFiles - errors.length;
+        
+        if (errors.length === 0) {
+          // All succeeded
+          if (totalFiles > 1) {
+            const statusText = `Done — ${totalFiles} files transcribed and queued. Opening timeline…`;
+            dlStatus.innerText = statusText;
+            setDownloadStatus(statusText);
+          } else {
+            const statusText = 'Done — opening timeline';
+            dlStatus.innerText = statusText;
+            setDownloadStatus(statusText);
+          }
+          
+          // Navigate to the timeline with all events
+          if (timelineId) {
+            // Clear downloaded files after successful transcription
+            downloadedFilesRef.current = [];
+            navigate(`/timeline/${timelineId}`);
+          } else {
+            dlStatus.innerText = 'Error: Timeline was not created';
+            setDownloadStatus('Error: Timeline was not created');
+          }
+        } else if (successCount > 0 && timelineId) {
+          // Some succeeded, some failed - but we have a timeline
+          const errorSummary = errors.length === 1 
+            ? `1 file failed (${errors[0].file})`
+            : `${errors.length} files failed`;
+          const statusText = `Partial success: ${successCount}/${totalFiles} processed. ${errorSummary}. Opening timeline…`;
+          dlStatus.innerText = statusText;
+          setDownloadStatus(statusText);
+          // Clear successfully processed files (keep failed ones for retry if needed)
+          downloadedFilesRef.current = downloadedFilesRef.current.filter(f => 
+            errors.some(e => e.file === f.filename)
           );
-        } catch (e) {
-          console.warn('Cache write failed:', e);
+          navigate(`/timeline/${timelineId}`);
+        } else {
+          // All failed or no timeline created
+          if (errors.length === totalFiles) {
+            const errorMsg = errors.map(e => `${e.file}: ${e.error}`).join('; ');
+            const statusText = `Error: All ${totalFiles} files failed. ${errorMsg}`;
+            dlStatus.innerText = statusText;
+            setDownloadStatus(statusText);
+            alert(`Error: All files failed. ${errorMsg}`);
+          } else {
+            const errorMsg = errors.map(e => `${e.file}: ${e.error}`).join('; ');
+            const statusText = `Error: Failed to create timeline. ${errorMsg}`;
+            dlStatus.innerText = statusText;
+            setDownloadStatus(statusText);
+            alert(`Error: Failed to create timeline. ${errorMsg}`);
+          }
         }
-        navigate(`/timeline/${timelineId}`);
       } catch (error) {
-        console.error('Transcription error:', error);
+        console.error('Download transcribe error:', error);
+        const errorText = 'Error: ' + (error.message || 'Unknown error');
+        dlStatus.innerText = errorText;
+        setDownloadStatus(errorText);
         alert('Error transcribing audio: ' + (error.message || 'Unknown error'));
+      } finally {
+        setDownloadTranscribeLoading(false);
         btnTranscribe.disabled = false;
-        btnTranscribe.innerText = 'TRANSCRIBE';
+        
+        // Update button text based on remaining files
+        const remainingAudioFiles = downloadedFilesRef.current.filter(f => 
+          f.filename.match(/\.(wav|mp3|ogg|m4a)$/i)
+        );
+        if (remainingAudioFiles.length > 1) {
+          btnTranscribe.innerText = `TRANSCRIBE ${remainingAudioFiles.length} FILES`;
+        } else if (remainingAudioFiles.length === 1) {
+          btnTranscribe.innerText = 'TRANSCRIBE';
+        } else {
+          btnTranscribe.innerText = 'TRANSCRIBE';
+          btnTranscribe.style.display = 'none';
+        }
       }
     };
 
@@ -545,7 +957,7 @@ function Home() {
             <div className="icon-box purple-icon">📁</div>
             <div>
               <h3>Local Upload</h3>
-              <p className="subtext">Upload an audio file from your computer to transcribe and open timeline</p>
+              <p className="subtext">Upload one or more audio files from your computer to transcribe and open timeline</p>
             </div>
           </div>
           <div className="info-line local-upload-status">
@@ -556,6 +968,7 @@ function Home() {
               ref={localFileInputRef}
               type="file"
               accept="audio/*,.wav,.mp3,.ogg,.m4a"
+              multiple
               onChange={onLocalFileChange}
               style={{ display: 'none' }}
             />
@@ -564,15 +977,21 @@ function Home() {
               className="btn btn-orange"
               onClick={() => localFileInputRef.current?.click()}
             >
-              SELECT FILE
+              SELECT FILES
             </button>
             <button
               type="button"
               className="btn btn-green"
               onClick={onLocalTranscribe}
-              disabled={!localUploadFile || localUploadLoading}
+              disabled={!localUploadFiles || localUploadFiles.length === 0 || localUploadLoading}
             >
-              {localUploadLoading ? 'PROCESSING…' : 'TRANSCRIBE & OPEN TIMELINE'}
+              {localUploadLoading 
+                ? (localUploadFiles.length > 1 
+                    ? `PROCESSING ${localUploadFiles.length} FILES…` 
+                    : 'PROCESSING…')
+                : localUploadFiles.length > 1
+                  ? `TRANSCRIBE ${localUploadFiles.length} FILES`
+                  : 'TRANSCRIBE & OPEN TIMELINE'}
             </button>
           </div>
         </div>
@@ -611,4 +1030,3 @@ function Home() {
 }
 
 export default Home;
-

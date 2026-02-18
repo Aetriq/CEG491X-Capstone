@@ -1,0 +1,18 @@
+{
+  "watch": ["routes", "models", "middleware", "database", "server.js"],
+  "ignore": [
+    "uploads",
+    "uploads/**",
+    "backend/uploads",
+    "backend/uploads/**",
+    "*.db",
+    "*.log",
+    "*.transcription.json",
+    "*.wav",
+    "*.mp3",
+    "*.m4a"
+  ],
+  "ext": "js,mjs,cjs",
+  "delay": 2000,
+  "verbose": true
+}

@@ -188,7 +188,7 @@ function TimelineView() {
 
   return (
     <div className="timeline-view-container">
-      <div className="top-buttons">
+      <div className="top-right-buttons">
         <button onClick={handleMainMenu} className="back-btn">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M15 18l-6-6 6-6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -203,23 +203,6 @@ function TimelineView() {
           </svg>
           Download CSV
         </button>
-        {isFromCache ? (
-          <div className="save-db-wrap">
-            <button
-              onClick={handleSaveToDatabase}
-              disabled={savingToDb}
-              className="save-btn save-db-btn"
-            >
-              {savingToDb ? 'Saving…' : 'Save to database'}
-            </button>
-            <span className="cache-hint">Unsaved (from transcription).</span>
-            <span className="cache-hint">Log in and save to store in database.</span>
-          </div>
-        ) : (
-          <button onClick={handleSave} className="save-btn">
-            Save Timeline
-          </button>
-        )}
       </div>
 
       <div className="timeline-layout">
@@ -288,7 +271,10 @@ function TimelineView() {
                       </td>
                       <td className="audio-cell">
                         {event.audio_file_path ? (
-                          <AudioPlayer eventId={event.id} />
+                          <AudioPlayer 
+                            eventId={event.id} 
+                            audioFilePath={event.audio_file_path || event.audioFilePath}
+                          />
                         ) : (
                           <span className="no-audio">No audio</span>
                         )}
@@ -310,6 +296,26 @@ function TimelineView() {
             </div>
           </div>
         </main>
+      </div>
+      
+      <div className="bottom-right-buttons">
+        {isFromCache ? (
+          <div className="save-db-wrap">
+            <button
+              onClick={handleSaveToDatabase}
+              disabled={savingToDb}
+              className="save-btn save-db-btn"
+            >
+              {savingToDb ? 'Saving…' : 'Save to database'}
+            </button>
+            <span className="cache-hint">Unsaved (from transcription).</span>
+            <span className="cache-hint">Log in and save to store in database.</span>
+          </div>
+        ) : (
+          <button onClick={handleSave} className="save-btn">
+            Save Timeline
+          </button>
+        )}
       </div>
     </div>
   );

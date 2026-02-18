@@ -33,7 +33,6 @@ function App() {
               </PrivateRoute>
             }
           />
-          {/* Timeline is accessible without login */}
           <Route path="/timeline/:id" element={<TimelineView />} />
           <Route path="/" element={<Navigate to="/home" />} />
         </Routes>

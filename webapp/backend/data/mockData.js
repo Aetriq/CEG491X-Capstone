@@ -1,174 +1,55 @@
-// Mock data matching the original HTML mockup
-// This data is used when database is not available
+// In-memory mock data storage for timelines and events
+// Used when database is not available or USE_MOCK_DATA=true
+// ⚠️ WARNING: This data is lost on server restart!
 
-const mockTimeline = {
-  id: 1,
-  device_id: 'ECHLG-01',
-  date_generated: '2025-10-27T00:00:00.000Z',
-  created_at: '2025-10-27T00:00:00.000Z',
-  updated_at: '2025-10-27T00:00:00.000Z'
-};
+const initTimestamp = new Date().toISOString();
+console.log(`[MOCKDATA-DEBUG] 🔄 MOCKDATA INITIALIZED [${initTimestamp}]`);
+console.log(`[MOCKDATA-DEBUG] ⚠️ WARNING: In-memory storage - data will be lost on server restart!`);
 
-const mockEvents = [
-  {
-    id: 1,
-    timeline_id: 1,
-    event_number: 1,
-    time: '12:24',
-    transcript: 'Leaving the base now.',
-    latitude: 45.539708,
-    longitude: -73.516467,
-    audio_file_path: null,
-    audio_duration: 23,
-    created_at: '2025-10-27T12:24:00.000Z',
-    updated_at: '2025-10-27T12:24:00.000Z'
-  },
-  {
-    id: 2,
-    timeline_id: 1,
-    event_number: 2,
-    time: '12:52',
-    transcript: 'Arriving on scene. No other units in sight.',
-    latitude: 45.828100,
-    longitude: -73.295275,
-    audio_file_path: null,
-    audio_duration: 15,
-    created_at: '2025-10-27T12:52:00.000Z',
-    updated_at: '2025-10-27T12:52:00.000Z'
-  },
-  {
-    id: 3,
-    timeline_id: 1,
-    event_number: 3,
-    time: '12:57',
-    transcript: 'Two victims located. Loaded them into the boat.',
-    latitude: 45.830372,
-    longitude: -73.291628,
-    audio_file_path: null,
-    audio_duration: 22,
-    created_at: '2025-10-27T12:57:00.000Z',
-    updated_at: '2025-10-27T12:57:00.000Z'
-  },
-  {
-    id: 4,
-    timeline_id: 1,
-    event_number: 4,
-    time: '13:05',
-    transcript: 'Administering oxygen now. Saturation at 93 percent.',
-    latitude: 45.830372,
-    longitude: -73.291628,
-    audio_file_path: null,
-    audio_duration: 19,
-    created_at: '2025-10-27T13:05:00.000Z',
-    updated_at: '2025-10-27T13:05:00.000Z'
-  },
-  {
-    id: 5,
-    timeline_id: 1,
-    event_number: 5,
-    time: '13:21',
-    transcript: 'No one else found. Evacuating the victims.',
-    latitude: 45.830372,
-    longitude: -73.291628,
-    audio_file_path: null,
-    audio_duration: 17,
-    created_at: '2025-10-27T13:21:00.000Z',
-    updated_at: '2025-10-27T13:21:00.000Z'
-  },
-  {
-    id: 6,
-    timeline_id: 1,
-    event_number: 6,
-    time: '13:40',
-    transcript: 'Arriving at the Port now. Ambulance already on site.',
-    latitude: 45.506514,
-    longitude: -73.550036,
-    audio_file_path: null,
-    audio_duration: 17,
-    created_at: '2025-10-27T13:40:00.000Z',
-    updated_at: '2025-10-27T13:40:00.000Z'
-  },
-  {
-    id: 7,
-    timeline_id: 1,
-    event_number: 7,
-    time: '13:56',
-    transcript: 'Transfer to paramedics complete.',
-    latitude: 45.506793,
-    longitude: -73.551300,
-    audio_file_path: null,
-    audio_duration: 13,
-    created_at: '2025-10-27T13:56:00.000Z',
-    updated_at: '2025-10-27T13:56:00.000Z'
-  },
-  {
-    id: 8,
-    timeline_id: 1,
-    event_number: 8,
-    time: '14:23',
-    transcript: 'Back at the base. End of mission 2468.',
-    latitude: 45.539708,
-    longitude: -73.516467,
-    audio_file_path: null,
-    audio_duration: 7,
-    created_at: '2025-10-27T14:23:00.000Z',
-    updated_at: '2025-10-27T14:23:00.000Z'
-  }
-];
+let nextTimelineId = 1;
+let nextEventId = 1000;
 
-// In-memory storage for edits (temporary, lost on server restart)
-let editedEvents = {};
+const timelines = {};
+const events = {};
+const transcriptionTimelines = {};
 
-// Dynamic timelines from transcription (id >= 2)
-let nextTimelineId = 2;
-const transcriptionTimelines = {}; // id -> { timeline, events }
+// Log initial state
+console.log(`[MOCKDATA-DEBUG] 📊 Initial state:`);
+console.log(`[MOCKDATA-DEBUG]   Timelines: ${Object.keys(timelines).length}`);
+console.log(`[MOCKDATA-DEBUG]   Events: ${Object.keys(events).length}`);
+console.log(`[MOCKDATA-DEBUG]   Transcription timelines: ${Object.keys(transcriptionTimelines).length}`);
+console.log(`[MOCKDATA-DEBUG]   Next timeline ID: ${nextTimelineId}`);
+console.log(`[MOCKDATA-DEBUG]   Next event ID: ${nextEventId}`);
 
-function getTimeline(id) {
-  const idNum = parseInt(id) || 1;
-  if (transcriptionTimelines[idNum]) {
-    return { ...transcriptionTimelines[idNum].timeline };
-  }
-  const timeline = { ...mockTimeline };
-  timeline.id = idNum;
-  return timeline;
-}
-
-function getEvents(timelineId) {
-  const timelineIdNum = parseInt(timelineId) || 1;
-  if (transcriptionTimelines[timelineIdNum]) {
-    return transcriptionTimelines[timelineIdNum].events.map(e => ({
-      ...e,
-      ...(editedEvents[e.id] || {})
-    }));
-  }
-  return mockEvents
-    .filter(e => e.timeline_id === timelineIdNum)
-    .map(event => {
-      if (editedEvents[event.id]) {
-        return { ...event, ...editedEvents[event.id] };
-      }
-      return event;
-    });
-}
-
-/**
- * Format a Date as recorded time string (HH:MM - when the audio was recorded).
- * @param {Date} date
- * @returns {string} e.g. "14:30"
- */
+/** Format a Date as recorded time (HH:MM). */
 function formatRecordedTime(date) {
   const d = date instanceof Date ? date : new Date(date);
-  const h = d.getHours();
-  const m = d.getMinutes();
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 /**
- * @param {Array} segments - [{ start, end, text }]
- * @param {string} audioFilePath
- * @param {Date|number} [recordingStartTime] - when the recording started (file mtime or now). If omitted, time column = mm:ss into audio.
+ * Create a timeline with a single event from transcription segments.
+ * @param {Array} segments - Transcription segments from Whisper
+ * @param {string} audioFilePath - Path to the filtered audio file
+ * @param {Date} recordingStartTime - When the recording started
+ * @returns {number} timelineId
  */
 function addTranscriptionTimeline(segments, audioFilePath, recordingStartTime) {
+  const timestamp = new Date().toISOString();
+  console.log(`[MOCKDATA-DEBUG] 📝 addTranscriptionTimeline called [${timestamp}]`);
+  console.log(`[MOCKDATA-DEBUG]   Audio file path: ${audioFilePath}`);
+  console.log(`[MOCKDATA-DEBUG]   Segments count: ${segments ? segments.length : 0}`);
+  
+  // Verify audio file exists before storing reference
+  const fs = require('fs');
+  const path = require('path');
+  const fileExists = fs.existsSync(audioFilePath);
+  console.log(`[MOCKDATA-DEBUG]   Audio file exists: ${fileExists}`);
+  if (!fileExists) {
+    console.log(`[MOCKDATA-DEBUG] ⚠️⚠️⚠️ WARNING: Audio file does not exist when creating timeline!`);
+    console.log(`[MOCKDATA-DEBUG]   Path: ${path.resolve(audioFilePath)}`);
+  }
+  
   const id = nextTimelineId++;
   const now = new Date().toISOString();
   const timeline = {
@@ -178,17 +59,21 @@ function addTranscriptionTimeline(segments, audioFilePath, recordingStartTime) {
     created_at: now,
     updated_at: now
   };
+  
   const baseTime = recordingStartTime != null
     ? (recordingStartTime instanceof Date ? recordingStartTime : new Date(recordingStartTime))
     : null;
+  
   const segs = segments || [];
   const fullTranscript = segs.map(s => s.text || '').join(' ').trim() || '';
   const totalDurationSec = segs.length ? Math.max(...segs.map(s => s.end != null ? s.end : 0)) : 0;
   const timeStr = baseTime
     ? formatRecordedTime(baseTime)
     : '00:00';
+  
+  const eventId = id * 1000;
   const events = [{
-    id: id * 1000,
+    id: eventId,
     timeline_id: id,
     event_number: 1,
     time: timeStr,
@@ -200,44 +85,244 @@ function addTranscriptionTimeline(segments, audioFilePath, recordingStartTime) {
     created_at: now,
     updated_at: now
   }];
+  
   if (baseTime) {
     timeline.recording_start_time = baseTime.toISOString();
   }
+  
   transcriptionTimelines[id] = { timeline, events };
+  
+  console.log(`[MOCKDATA-DEBUG] ✅ Timeline created:`);
+  console.log(`[MOCKDATA-DEBUG]   Timeline ID: ${id}`);
+  console.log(`[MOCKDATA-DEBUG]   Event ID: ${eventId}`);
+  console.log(`[MOCKDATA-DEBUG]   Audio path stored: ${audioFilePath}`);
+  console.log(`[MOCKDATA-DEBUG]   Audio path exists: ${fileExists}`);
+  
+  // Log updated state
+  logState();
+  
   return id;
 }
 
-function updateEvent(eventId, updates) {
-  const idNum = parseInt(eventId, 10);
-  if (!editedEvents[idNum]) {
-    editedEvents[idNum] = {};
+/**
+ * Append a new event to an existing transcription timeline.
+ * @param {number} timelineId - Existing timeline ID
+ * @param {Array} segments - Transcription segments from Whisper
+ * @param {string} audioFilePath - Path to the filtered audio file
+ * @param {Date} recordingStartTime - When the recording started
+ * @returns {Array} Updated events array
+ */
+function appendTranscriptionEvent(timelineId, segments, audioFilePath, recordingStartTime) {
+  const timestamp = new Date().toISOString();
+  console.log(`[MOCKDATA-DEBUG] ➕ appendTranscriptionEvent called [${timestamp}]`);
+  console.log(`[MOCKDATA-DEBUG]   Timeline ID: ${timelineId}`);
+  console.log(`[MOCKDATA-DEBUG]   Audio file path: ${audioFilePath}`);
+  
+  const entry = transcriptionTimelines[timelineId];
+  if (!entry) {
+    console.log(`[MOCKDATA-DEBUG] ❌ Timeline ${timelineId} not found`);
+    throw new Error('Timeline not found');
   }
-  editedEvents[idNum] = { ...editedEvents[idNum], ...updates };
-  for (const key of Object.keys(transcriptionTimelines)) {
-    const ev = transcriptionTimelines[key].events.find(e => e.id === idNum);
-    if (ev) return { ...ev, ...editedEvents[idNum] };
+  
+  // Verify audio file exists before storing reference
+  const fs = require('fs');
+  const path = require('path');
+  const fileExists = fs.existsSync(audioFilePath);
+  console.log(`[MOCKDATA-DEBUG]   Audio file exists: ${fileExists}`);
+  if (!fileExists) {
+    console.log(`[MOCKDATA-DEBUG] ⚠️⚠️⚠️ WARNING: Audio file does not exist when appending event!`);
+    console.log(`[MOCKDATA-DEBUG]   Path: ${path.resolve(audioFilePath)}`);
   }
-  const event = mockEvents.find(e => e.id === idNum);
-  return event ? { ...event, ...editedEvents[idNum] } : null;
+  
+  const now = new Date().toISOString();
+  const baseTime = recordingStartTime != null
+    ? (recordingStartTime instanceof Date ? recordingStartTime : new Date(recordingStartTime))
+    : null;
+  
+  const segs = segments || [];
+  const fullTranscript = segs.map(s => s.text || '').join(' ').trim() || '';
+  const totalDurationSec = segs.length ? Math.max(...segs.map(s => s.end != null ? s.end : 0)) : 0;
+  const timeStr = baseTime
+    ? formatRecordedTime(baseTime)
+    : '00:00';
+  
+  const nextEventNumber = (entry.events[entry.events.length - 1]?.event_number || 0) + 1;
+  const eventId = timelineId * 1000 + (nextEventNumber - 1);
+  
+  const ev = {
+    id: eventId,
+    timeline_id: timelineId,
+    event_number: nextEventNumber,
+    time: timeStr,
+    transcript: fullTranscript,
+    latitude: null,
+    longitude: null,
+    audio_file_path: audioFilePath,
+    audio_duration: Math.round(totalDurationSec * 1000),
+    created_at: now,
+    updated_at: now
+  };
+  
+  entry.events.push(ev);
+  
+  if (baseTime && !entry.timeline.recording_start_time) {
+    entry.timeline.recording_start_time = baseTime.toISOString();
+  }
+  
+  transcriptionTimelines[timelineId] = entry;
+  
+  console.log(`[MOCKDATA-DEBUG] ✅ Event appended:`);
+  console.log(`[MOCKDATA-DEBUG]   Event ID: ${eventId}`);
+  console.log(`[MOCKDATA-DEBUG]   Event number: ${nextEventNumber}`);
+  console.log(`[MOCKDATA-DEBUG]   Audio path stored: ${audioFilePath}`);
+  console.log(`[MOCKDATA-DEBUG]   Audio path exists: ${fileExists}`);
+  console.log(`[MOCKDATA-DEBUG]   Total events in timeline: ${entry.events.length}`);
+  
+  return entry.events;
 }
 
+/**
+ * Get a timeline by ID.
+ * @param {number} id - Timeline ID
+ * @returns {Object|null} Timeline object or null
+ */
+function getTimeline(id) {
+  // Check transcription timelines first
+  if (transcriptionTimelines[id]) {
+    return transcriptionTimelines[id].timeline;
+  }
+  // Check regular timelines
+  return timelines[id] || null;
+}
+
+/**
+ * Get all events for a timeline.
+ * @param {number} timelineId - Timeline ID
+ * @returns {Array} Array of event objects
+ */
+function getEvents(timelineId) {
+  // Check transcription timelines first
+  if (transcriptionTimelines[timelineId]) {
+    return transcriptionTimelines[timelineId].events || [];
+  }
+  // Check regular events
+  return Object.values(events).filter(e => e.timeline_id === timelineId) || [];
+}
+
+/**
+ * Get an event by ID.
+ * @param {number} eventId - Event ID
+ * @returns {Object|null} Event object or null
+ */
 function getEventById(eventId) {
-  const idNum = parseInt(eventId, 10);
-  for (const key of Object.keys(transcriptionTimelines)) {
-    const ev = transcriptionTimelines[key].events.find(e => e.id === idNum);
-    if (ev) {
-      return editedEvents[ev.id] ? { ...ev, ...editedEvents[ev.id] } : ev;
+  const timestamp = new Date().toISOString();
+  console.log(`[MOCKDATA-DEBUG] 🔍 getEventById called [${timestamp}]`);
+  console.log(`[MOCKDATA-DEBUG]   Event ID: ${eventId}`);
+  
+  // Log current state for debugging
+  const transcriptionTimelineIds = Object.keys(transcriptionTimelines);
+  const totalEvents = Object.values(transcriptionTimelines).reduce((sum, entry) => sum + (entry.events?.length || 0), 0);
+  console.log(`[MOCKDATA-DEBUG] 📊 Current mockData state:`);
+  console.log(`[MOCKDATA-DEBUG]   Transcription timelines: ${transcriptionTimelineIds.length} (IDs: ${transcriptionTimelineIds.join(', ') || 'none'})`);
+  console.log(`[MOCKDATA-DEBUG]   Total events in transcription timelines: ${totalEvents}`);
+  console.log(`[MOCKDATA-DEBUG]   Regular events: ${Object.keys(events).length}`);
+  
+  // Search transcription timelines
+  for (const entry of Object.values(transcriptionTimelines)) {
+    const event = entry.events.find(e => e.id === eventId);
+    if (event) {
+      console.log(`[MOCKDATA-DEBUG] ✅ Event found in transcriptionTimelines`);
+      console.log(`[MOCKDATA-DEBUG]   Timeline ID: ${event.timeline_id}`);
+      console.log(`[MOCKDATA-DEBUG]   Audio path: ${event.audio_file_path || 'MISSING'}`);
+      
+      // Verify audio file exists
+      if (event.audio_file_path) {
+        const fs = require('fs');
+        const path = require('path');
+        const fileExists = fs.existsSync(event.audio_file_path);
+        console.log(`[MOCKDATA-DEBUG]   Audio file exists: ${fileExists}`);
+        if (!fileExists) {
+          console.log(`[MOCKDATA-DEBUG] ⚠️⚠️⚠️ CRITICAL: Audio file missing for event ${eventId}!`);
+          console.log(`[MOCKDATA-DEBUG]   Expected path: ${path.resolve(event.audio_file_path)}`);
+          console.log(`[MOCKDATA-DEBUG]   Event created: ${event.created_at || 'unknown'}`);
+        }
+      } else {
+        console.log(`[MOCKDATA-DEBUG] ⚠️ Event has no audio_file_path property`);
+      }
+      
+      return event;
     }
   }
-  const event = mockEvents.find(e => e.id === idNum);
-  if (!event) return null;
-  return editedEvents[event.id] ? { ...event, ...editedEvents[event.id] } : event;
+  // Check regular events
+  const regularEvent = events[eventId] || null;
+  if (regularEvent) {
+    console.log(`[MOCKDATA-DEBUG] ✅ Event found in regular events`);
+    console.log(`[MOCKDATA-DEBUG]   Audio path: ${regularEvent.audio_file_path || 'MISSING'}`);
+  } else {
+    console.log(`[MOCKDATA-DEBUG] ❌ Event not found in any source`);
+    console.log(`[MOCKDATA-DEBUG] ⚠️⚠️⚠️ POSSIBLE CAUSES:`);
+    console.log(`[MOCKDATA-DEBUG]   1. Server was restarted (nodemon/file change) - in-memory data lost`);
+    console.log(`[MOCKDATA-DEBUG]   2. Event was never created`);
+    console.log(`[MOCKDATA-DEBUG]   3. Event ID mismatch`);
+    console.log(`[MOCKDATA-DEBUG]   📝 Check server logs for when event ${eventId} was created`);
+    console.log(`[MOCKDATA-DEBUG]   💡 Solution: Use database (SQLite) instead of mockData for persistence`);
+  }
+  return regularEvent;
+}
+
+/**
+ * Update an event.
+ * @param {number} eventId - Event ID
+ * @param {Object} updates - Fields to update
+ * @returns {Object|null} Updated event or null
+ */
+function updateEvent(eventId, updates) {
+  // Search transcription timelines
+  for (const entry of Object.values(transcriptionTimelines)) {
+    const event = entry.events.find(e => e.id === eventId);
+    if (event) {
+      Object.assign(event, updates, { updated_at: new Date().toISOString() });
+      return event;
+    }
+  }
+  // Check regular events
+  if (events[eventId]) {
+    Object.assign(events[eventId], updates, { updated_at: new Date().toISOString() });
+    return events[eventId];
+  }
+  return null;
+}
+
+/**
+ * Log current state of mockData (for debugging).
+ */
+function logState() {
+  const transcriptionTimelineIds = Object.keys(transcriptionTimelines);
+  const totalEvents = Object.values(transcriptionTimelines).reduce((sum, entry) => sum + (entry.events?.length || 0), 0);
+  const eventIds = [];
+  Object.values(transcriptionTimelines).forEach(entry => {
+    if (entry.events) {
+      entry.events.forEach(ev => eventIds.push(ev.id));
+    }
+  });
+  
+  console.log(`[MOCKDATA-DEBUG] 📊 Current mockData state:`);
+  console.log(`[MOCKDATA-DEBUG]   Transcription timelines: ${transcriptionTimelineIds.length}`);
+  console.log(`[MOCKDATA-DEBUG]   Timeline IDs: ${transcriptionTimelineIds.join(', ') || 'none'}`);
+  console.log(`[MOCKDATA-DEBUG]   Total events: ${totalEvents}`);
+  console.log(`[MOCKDATA-DEBUG]   Event IDs: ${eventIds.join(', ') || 'none'}`);
+  console.log(`[MOCKDATA-DEBUG]   Regular timelines: ${Object.keys(timelines).length}`);
+  console.log(`[MOCKDATA-DEBUG]   Regular events: ${Object.keys(events).length}`);
+  console.log(`[MOCKDATA-DEBUG]   Next timeline ID: ${nextTimelineId}`);
+  console.log(`[MOCKDATA-DEBUG]   Next event ID: ${nextEventId}`);
 }
 
 module.exports = {
   getTimeline,
   getEvents,
-  updateEvent,
   getEventById,
-  addTranscriptionTimeline
+  updateEvent,
+  addTranscriptionTimeline,
+  appendTranscriptionEvent,
+  logState
 };
