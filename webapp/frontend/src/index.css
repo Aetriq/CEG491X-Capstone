@@ -1,0 +1,38 @@
+:root {
+  --teal: #1f8dc0;
+  --teal-dark: #1f7f88;
+  --panel-bg: #dff2f4;
+  --accent: #00133d;
+  --muted: #7b8b91;
+  --row-alt: #e9f3f4;
+  --white: #ffffff;
+  --container-bg: #f7fafb;
+  --shadow: 0 6px 18px rgba(0,0,0,0.12);
+}
+
+@font-face {
+  font-family: 'Frutiger';
+  src: url('/FrutigerLTStd55Roman.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Frutiger', "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: linear-gradient(180deg, #f4fbfd 0%, #fbfcfe 100%);
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
