@@ -1,3 +1,5 @@
+// CEG491X-Capstone/echolog-webapp/frontend/src/index.tsx
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './styles/globals.css'; // Connects to the global.css file

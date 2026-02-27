@@ -1,38 +1,84 @@
 // backend/src/server.js
-
-// This is the MAIN server file. It starts everything.
+// UPDATED: Added Swagger UI, config usage, and job queue integration
 const express = require('express');
 const cors = require('cors');
-const path = require('path'); // ADDED: Missing path import
+const path = require('path');
 require('dotenv').config();
 
-const app = express();
-const PORT = process.env.PORT || 5000;
+// NEW: Import config
+const config = require('./config');
 
-// Add to your server.js file after other imports:
-const authRoutes = require('./routes/auth.routes');
+// Friend's routes
+const authRoutes = require('./routes/auth');
+const timelineRoutes = require('./routes/timelines');
+const audioRoutes = require('./routes/audio');
+
+// Your custom file routes (optional)
 const fileRoutes = require('./routes/file.routes');
 
-// Middleware (software that processes requests)
-app.use(cors());  // Allows frontend to talk to backend
-app.use(express.json());  // Understands JSON data
+// NEW: Swagger
+const swaggerUi = require('swagger-ui-express');
+const specs = require('./swagger');
 
+const app = express();
+const PORT = config.port; // use config
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+app.set('trust proxy', true);
+
+// Prevent connection resets on long-running requests
+app.use((req, res, next) => {
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Keep-Alive', 'timeout=600');
+  next();
+});
+
+// Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/timelines', timelineRoutes);
+app.use('/api/audio', audioRoutes);
 app.use('/api/files', fileRoutes);
 
-// Add to serve uploaded files:
+// NEW: Swagger UI
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', message: 'EchoLog API is running' });
+});
+
+// Serve uploaded files statically
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Simple test route
-app.get('/', (req, res) => {
-  res.json({ message: 'EchoLog Backend is running!' });
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('❌ Express Error Handler:', err);
+  console.error('Error stack:', err.stack);
+  if (!res.headersSent) {
+    res.status(err.status || 500).json({
+      error: err.message || 'Internal server error',
+      ...(config.nodeEnv === 'development' && { stack: err.stack })
+    });
+  }
 });
 
-// REMOVED: Duplicate auth routes registration
-// app.use('/api/auth', require('./routes/auth.routes'));
-
-// Start the server
-app.listen(PORT, () => {
-  console.log(`✅ Server is running on http://localhost:${PORT}`);
-  console.log(`📁 Frontend should be at http://localhost:3000`);
+// Start server
+const server = app.listen(PORT, () => {
+  console.log(`EchoLog Backend API running on port ${PORT}`);
 });
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('\nShutting down gracefully...');
+  server.close(async () => {
+    const { closeDatabase } = require('./database/db');
+    await closeDatabase();
+    process.exit(0);
+  });
+});
+
+module.exports = app;

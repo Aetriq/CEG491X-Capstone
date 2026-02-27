@@ -1,3 +1,4 @@
+/*CEG491X-Capstone/webapp/Backend/database/db.js*/
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');

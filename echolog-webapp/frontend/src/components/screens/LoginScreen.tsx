@@ -242,7 +242,7 @@ const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
               </div>
               <h2>EchoLog</h2>
             </div>
-            
+            {/*Remove this section since its not true eh. Let's just keep the login sinmpler for now*/}
             <h3>Professional Audio Logging</h3>
             <ul className="feature-list">
               <li>🔒 Military-grade encryption</li>

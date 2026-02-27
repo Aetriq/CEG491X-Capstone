@@ -1,3 +1,4 @@
+/*CEG491X-Capstone/webapp/Backend/models/Event.js*/
 const { db } = require('../database/db');
 
 class Event {
