@@ -42,8 +42,8 @@
 #define PIN_MODE_BT GPIO_NUM_0  
 #define PIN_MODE_REC GPIO_NUM_1  
 
-#define PIN_LED_BT GPIO_NUM_35
-#define PIN_LED_REC GPIO_NUM_37
+#define PIN_LED_BT GPIO_NUM_40
+#define PIN_LED_REC GPIO_NUM_39
 
 /* ==================== 3.0 Global Definitions & Variables ==================== */
 #define WAKEUP_BITMASK ((1ULL << PIN_MODE_BT) | (1ULL << PIN_MODE_REC))

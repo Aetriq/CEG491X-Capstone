@@ -16,10 +16,21 @@
 /* School of Electrical Engineering and Computer Science at the University of Ottawa */
 
 /* Onboard OS for ESP32-S3 based Heltec IOT Wireless Tracker */
-/* Recording mode header */
-#ifndef RECORDING_MODE_H
-#define RECORDING_MODE_H
+/* Configuration Manager Header */
+#ifndef CONFIG_MANAGER_H
+#define CONFIG_MANAGER_H
 
-void recording_mode_main(void);
+#include <stdint.h>
+
+typedef struct {
+    uint16_t accel_act_thresh;
+    uint16_t accel_act_time;
+    uint16_t accel_inact_thresh;
+    uint16_t accel_inact_time;
+    uint16_t record_length_sec;
+} device_config_t;
+
+void load_config(device_config_t *cfg);
+void save_config(device_config_t *cfg);
 
 #endif

@@ -1,7 +1,6 @@
 # This file was automatically generated for projects
 # without default 'CMakeLists.txt' file.
-
 FILE(GLOB_RECURSE app_sources ${CMAKE_SOURCE_DIR}/src/*.*)
 
-idf_component_register(SRCS "main.c" "bluetooth_mode.c" "recording_mode.c" "rtc_module.c"
+idf_component_register(SRCS "main.c" "bluetooth_mode.c" "recording_mode.c" "rtc_module.c" "config_manager.c"
                     INCLUDE_DIRS ".")

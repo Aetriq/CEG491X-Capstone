@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" href="https://github.com/Aetriq/CEG491X-Capstone/blob/main/webapp/loadinglogo.png?raw=true">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EchoLog DEV TOOL</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root { --sidebar-bg: #1a7199; --main-bg: #e0e8ef; --card-bg: rgba(255, 255, 255, 0.65); --glass-border: 1px solid rgba(255, 255, 255, 0.4); --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1); }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { height: 100vh; background-color: var(--main-bg); overflow: hidden; display: flex; }
+        .sidebar { width: 300px; background: linear-gradient(180deg, var(--sidebar-bg) 0%, #0f4c66 100%); color: white; display: flex; flex-direction: column; padding: 20px; flex-shrink: 0; box-shadow: 5px 0 25px rgba(0,0,0,0.15); z-index: 10; }
+        .logo { font-size: 24px; font-weight: bold; margin-bottom: 20px; letter-spacing: 1px; line-height: 1.2; }
+        .dev-badge { color: #ff4c4c; font-size: 14px; font-weight: 900; letter-spacing: 2px; }
+        .status-panel { font-size: 13px; margin-bottom: 20px; background: rgba(0,0,0,0.25); padding: 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); }
+        .status-panel strong { color: #aaa; }
+        #console-box { flex: 1; background: #0a0a0a; border-radius: 8px; border: 1px solid #333; margin-top: 10px; display: flex; flex-direction: column; overflow: hidden; box-shadow: inset 0 0 10px rgba(0,0,0,0.8); }
+        .console-header { background: #222; padding: 8px 10px; font-size: 11px; font-weight: bold; color: #888; border-bottom: 1px solid #333; text-transform: uppercase; letter-spacing: 1px; }
+        #console-content { flex: 1; padding: 10px; overflow-y: auto; font-family: 'Courier New', Courier, monospace; font-size: 12px; color: #0f0; }
+        .log-entry { margin-bottom: 6px; word-wrap: break-word; line-height: 1.4; }
+        .log-time { color: #888; margin-right: 8px; }
+        .log-error { color: #ff4c4c; }
+        .log-warn { color: #ffeb3b; }
+        .log-info { color: #00bcd4; }
+        .main-content { flex: 1; padding: 30px; overflow-y: auto; background: var(--main-bg); }
+        .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+        .full-width { grid-column: 1 / -1; }
+        .card { background: var(--card-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: var(--glass-border); border-radius: 12px; padding: 25px; box-shadow: var(--glass-shadow); transition: all 0.3s; }
+        .card-header { display: flex; align-items: center; margin-bottom: 15px; }
+        .icon-box { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-right: 15px; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .orange-icon { background: linear-gradient(135deg, #FF9800, #F57C00); }
+        .red-icon { background: linear-gradient(135deg, #b71c1c, #d32f2f); }
+        .teal-icon { background: linear-gradient(135deg, #00bcd4, #0097a7); }
+        .purple-icon { background: linear-gradient(135deg, #9C27B0, #7B1FA2); }
+        h3 { font-size: 18px; color: #2c3e50; margin-bottom: 5px; }
+        p.subtext { font-size: 13px; color: #607d8b; }
+        .control-group { margin-top: 15px; display: flex; flex-wrap: wrap; gap: 8px; }
+        .info-line { font-size: 13px; margin-bottom: 10px; color: #455a64; font-family: monospace; white-space: pre-wrap; background: rgba(255,255,255,0.6); padding: 8px 12px; border-radius: 6px; border-left: 4px solid #1a7199; }
+        .btn { border: none; padding: 10px 16px; border-radius: 6px; color: white; font-weight: bold; cursor: pointer; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; transition: 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 1px solid rgba(255,255,255,0.2); }
+        .btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); filter: brightness(110%); }
+        .btn:disabled { background: #cfd8dc !important; cursor: not-allowed; color: #90a4ae; border: none; box-shadow: none; }
+        .btn-green { background: linear-gradient(135deg, #4CAF50, #388E3C); }
+        .btn-orange { background: linear-gradient(135deg, #FF9800, #F57C00); }
+        .btn-red { background: linear-gradient(135deg, #F44336, #D32F2F); }
+        .btn-blue { background: linear-gradient(135deg, #2196F3, #1976D2); }
+        .btn-dark { background: linear-gradient(135deg, #455A64, #263238); }
+        .form-group { margin-bottom: 15px; }
+        .form-label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px; color: #444; }
+        .form-input { padding: 10px; border: 1px solid rgba(0,0,0,0.1); background: rgba(255,255,255,0.8); border-radius: 6px; width: 100%; transition: 0.2s; }
+        .form-input:focus { border-color: var(--sidebar-bg); background: white; outline: none; }
+        .form-slider { width: 100%; cursor: pointer; }
+        .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="logo">EchoLog<br><span class="dev-badge">DEV TOOL</span></div>
+        <div class="status-panel">
+            <strong>Device:</strong> <span id="sidebarConn" style="color:#ffcccc; font-weight:bold;">Disconnected</span><br><br>
+            <strong>Last Action:</strong><br><span id="sidebarStatus" style="color:#fff;">System initialized.</span>
+        </div>
+        <div id="console-box"><div class="console-header">System Console</div><div id="console-content"></div></div>
+    </div>
+
+    <div class="main-content">
+        <div class="dashboard-grid">
+            
+            <div class="card full-width">
+                <div class="card-header"><div class="icon-box teal-icon"><i class="fas fa-link"></i></div><div><h3>Device Connection</h3><p class="subtext">Connect via BLE or USB Serial Cable</p></div></div>
+                <div class="control-group">
+                    <button class="btn btn-orange" id="btnScanBle">CONNECT BLE</button>
+                    <button class="btn btn-blue" id="btnScanSerial">CONNECT USB</button>
+                    <button class="btn btn-red" id="btnDisconnect" style="display:none">DISCONNECT</button>
+                    <span id="bleList" style="margin-left: 15px; font-weight: bold; align-self: center; color: #555;">Status: Not Connected</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><div class="icon-box red-icon"><i class="fas fa-folder-open"></i></div><div><h3>SD Card Storage</h3><p class="subtext">Download or delete raw files</p></div></div>
+                <div class="info-line" id="dlStatus">Status: Idle</div>
+                <div id="fileList" style="height: 150px; overflow-y: auto; background: rgba(255,255,255,0.8); border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; padding: 5px; margin-bottom: 10px;">
+                    <div style="padding: 5px; color: #555; font-size: 13px;">Connect to device to list files...</div>
+                </div>
+                <div class="control-group">
+                    <button class="btn btn-blue" id="btnRefresh" disabled><i class="fas fa-sync"></i></button>
+                    <button class="btn btn-green" id="btnDownload" disabled>DOWNLOAD</button>
+                    <button class="btn btn-dark" id="btnCancelDownload" disabled>CANCEL DL</button>
+                    <button class="btn btn-red" id="btnDelete" disabled>DELETE</button>
+                </div>
+            </div>  
+
+            <div class="card">
+                <div class="card-header"><div class="icon-box orange-icon"><i class="fas fa-file-upload"></i></div><div><h3>Upload Files</h3><p class="subtext">Transfer files to onboard storage</p></div></div>
+                <div class="info-line" id="uploadStatus">File: None Selected<br>Size: 0 Bytes</div>
+                <div class="control-group">
+                    <input type="file" id="fileInput" style="display: none;">
+                    <button class="btn btn-orange" onclick="document.getElementById('fileInput').click()">SELECT FILE</button>
+                    <button class="btn btn-green" id="btnStartUpload" disabled>START UPLOAD</button>
+                    <button class="btn btn-red" id="btnStopUpload" disabled>STOP</button>
+                </div>
+            </div>
+
+            <div class="card full-width">
+                <div class="card-header"><div class="icon-box purple-icon"><i class="fas fa-sliders-h"></i></div><div><h3>Device Parameters</h3><p class="subtext">Push settings directly to NVS memory</p></div></div>
+                <div class="form-group"><label class="form-label">Audio Recording Length (s)</label><input type="range" min="10" max="300" value="30" class="form-slider" id="recLengthSlider" oninput="document.getElementById('sVal').innerText = this.value + 's'"><span id="sVal" style="margin-left:10px; font-weight:bold; color:#555">30s</span></div>
+                <div class="config-grid">
+                    <div class="form-group"><label class="form-label">Activity Threshold</label><input type="number" class="form-input" id="actThresh" value="1800"></div>
+                    <div class="form-group"><label class="form-label">Activity Time (ms)</label><input type="number" class="form-input" id="actTime" value="10"></div>
+                    <div class="form-group"><label class="form-label">Inactivity Threshold</label><input type="number" class="form-input" id="inaThresh" value="1500"></div>
+                    <div class="form-group"><label class="form-label">Inactivity Time (ms)</label><input type="number" class="form-input" id="inaTime" value="10"></div>
+                </div>
+                <div class="control-group" style="margin-top:20px; border-top:1px solid rgba(0,0,0,0.1); padding-top:20px;">
+                    <button class="btn btn-green" id="btnSaveConfig" disabled>SAVE TO DEVICE</button>
+                    <button class="btn btn-dark" id="btnDefaultConfig" disabled>RESET DEFAULTS</button>
+                    <button class="btn btn-blue" id="btnSyncTime" disabled style="margin-left: auto;">SYNC RTC TIME</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+    const CHAR_CMD_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+    const CHAR_DATA_UUID = "829a287c-03c4-4c22-9442-70b9687c703b";
+    const CHAR_UPLOAD_UUID = "ce2e1b12-5883-4903-8120-001004b3410f";
+
+    // Connection State variables
+    let currentConnection = 'NONE'; // 'NONE', 'BLE', 'SERIAL'
+    let isConnected = false;
+    
+    // BLE Variables
+    let device, server, service, cmdChar, dataChar, uploadChar;
+    
+    // Serial Variables
+    let serialPort, serialReader;
+
+    // Operation State
+    let fileBuffer = [];
+    let isDownloading = false;
+    let stopDownloadFlag = false;
+    let stopUploadFlag = false;
+    let startTime;
+
+    // DOM Elements
+    const sidebarConn = document.getElementById('sidebarConn');
+    const sidebarStatus = document.getElementById('sidebarStatus');
+    const consoleContent = document.getElementById('console-content');
+    const bleList = document.getElementById('bleList');
+    const fileListContainer = document.getElementById('fileList');
+    const dlStatus = document.getElementById('dlStatus');
+    const uploadStatus = document.getElementById('uploadStatus');
+
+    const buttons = {
+        scanBle: document.getElementById('btnScanBle'),
+        scanSerial: document.getElementById('btnScanSerial'),
+        disconnect: document.getElementById('btnDisconnect'),
+        refresh: document.getElementById('btnRefresh'),
+        download: document.getElementById('btnDownload'),
+        cancelDl: document.getElementById('btnCancelDownload'),
+        del: document.getElementById('btnDelete'),
+        startUpload: document.getElementById('btnStartUpload'),
+        stopUpload: document.getElementById('btnStopUpload'),
+        saveCfg: document.getElementById('btnSaveConfig'),
+        defCfg: document.getElementById('btnDefaultConfig'),
+        syncTime: document.getElementById('btnSyncTime')
+    };
+
+    function formatBytes(bytes) { if(bytes===0) return '0 Bytes'; const k=1024, sizes=['Bytes','KB','MB'], i=Math.floor(Math.log(bytes)/Math.log(k)); return parseFloat((bytes/Math.pow(k,i)).toFixed(2))+' '+sizes[i]; }
+
+    function logConsole(msg, type = 'log-info') {
+        const now = new Date();
+        const timeStr = now.toTimeString().split(' ')[0];
+        const div = document.createElement('div');
+        div.className = `log-entry ${type}`;
+        div.innerHTML = `<span class="log-time">[${timeStr}]</span> ${msg}`;
+        consoleContent.appendChild(div);
+        consoleContent.scrollTop = consoleContent.scrollHeight; 
+    }
+
+    function setGlobalStatus(msg) { sidebarStatus.innerText = msg; logConsole(msg); }
+
+    // --- BLUETOOTH LOGIC ---
+    buttons.scanBle.addEventListener('click', async () => {
+        try {
+            logConsole("Requesting Bluetooth Device...", 'log-warn');
+            device = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: "SuperMini" }, { namePrefix: "EchoLog" }], optionalServices: [SERVICE_UUID] });
+            bleList.innerText = "Connecting to " + device.name + "...";
+            device.addEventListener('gattserverdisconnected', () => onDisconnected('BLE'));
+            server = await device.gatt.connect();
+            service = await server.getPrimaryService(SERVICE_UUID);
+            cmdChar = await service.getCharacteristic(CHAR_CMD_UUID);
+            dataChar = await service.getCharacteristic(CHAR_DATA_UUID);
+            uploadChar = await service.getCharacteristic(CHAR_UPLOAD_UUID);
+            await dataChar.startNotifications();
+            dataChar.addEventListener('characteristicvaluechanged', (e) => handleIncomingData(e.target.value));
+            onConnected('BLE');
+        } catch (error) { logConsole(`BLE Error: ${error.message}`, 'log-error'); bleList.innerText = "Error: " + error.message; }
+    });
+
+    // --- SERIAL LOGIC ---
+    buttons.scanSerial.addEventListener('click', async () => {
+        try {
+            logConsole("Requesting Serial Device...", 'log-warn');
+            serialPort = await navigator.serial.requestPort();
+            await serialPort.open({ baudRate: 115200, bufferSize: 8192 });
+            onConnected('SERIAL');
+            readSerialLoop(); // Start continuous reading
+        } catch (error) { logConsole(`Serial Error: ${error.message}`, 'log-error'); bleList.innerText = "Error: " + error.message; }
+    });
+
+    async function readSerialLoop() {
+        while (serialPort.readable && currentConnection === 'SERIAL') {
+            serialReader = serialPort.readable.getReader();
+            try {
+                while (true) {
+                    const { value, done } = await serialReader.read();
+                    if (done) break;
+                    if (value) handleIncomingData(new DataView(value.buffer, value.byteOffset, value.byteLength));
+                }
+            } catch (error) { logConsole(`Serial Read Error: ${error}`, 'log-error'); onDisconnected('SERIAL');
+            } finally { serialReader.releaseLock(); }
+        }
+    }
+
+    // --- CONNECTION MANAGEMENT ---
+    function onConnected(type) {
+        currentConnection = type;
+        isConnected = true; 
+        sidebarConn.innerText = `Connected (${type})`; sidebarConn.style.color = "#4CAF50";
+        bleList.innerText = `Active: ${type === 'BLE' ? device.name : "USB Cable"}`; bleList.style.color = "#4CAF50";
+        
+        buttons.scanBle.style.display = 'none'; buttons.scanSerial.style.display = 'none'; 
+        buttons.disconnect.style.display = 'inline-block';
+        
+        buttons.refresh.disabled = false; buttons.download.disabled = false; buttons.del.disabled = false; buttons.startUpload.disabled = false; buttons.saveCfg.disabled = false; buttons.defCfg.disabled = false; buttons.syncTime.disabled = false;
+        setGlobalStatus(`Established ${type} connection.`);
+        refreshFileList();
+    }
+
+    async function onDisconnected(type) {
+        currentConnection = 'NONE';
+        isConnected = false; 
+        sidebarConn.innerText = "Disconnected"; sidebarConn.style.color = "#ffcccc";
+        bleList.innerText = "Not Connected"; bleList.style.color = "#555";
+        
+        buttons.scanBle.style.display = 'inline-block'; buttons.scanSerial.style.display = 'inline-block'; 
+        buttons.disconnect.style.display = 'none';
+        
+        Object.values(buttons).forEach(btn => { if (btn !== buttons.scanBle && btn !== buttons.scanSerial) btn.disabled = true; });
+        fileListContainer.innerHTML = "<div style='padding:5px;font-size:13px;'>Disconnected</div>";
+        setGlobalStatus(`Device disconnected.`);
+
+        if (type === 'SERIAL' && serialPort) { try { await serialPort.close(); } catch(e){} serialPort = null; }
+    }
+
+    buttons.disconnect.addEventListener('click', () => { 
+        if (currentConnection === 'BLE' && device && device.gatt.connected) device.gatt.disconnect(); 
+        else if (currentConnection === 'SERIAL') {
+            if(serialReader) serialReader.cancel(); 
+            else onDisconnected('SERIAL');
+        }
+    });
+    
+    // --- COMMAND AND DATA HANDLING ---
+    async function sendCommand(cmd) { 
+        if (!isConnected) return; 
+        const enc = new TextEncoder(); 
+        logConsole(`Command Sent: ${cmd}`, 'log-warn');
+        if (currentConnection === 'BLE') { await cmdChar.writeValue(enc.encode(cmd)); } 
+        else if (currentConnection === 'SERIAL') {
+            const writer = serialPort.writable.getWriter();
+            await writer.write(enc.encode(cmd + '\n')); 
+            writer.releaseLock();
+        }
+    }
+
+    buttons.refresh.addEventListener('click', refreshFileList);
+
+    function refreshFileList() { 
+        fileListContainer.innerHTML = "<div style='padding:5px;font-size:13px;'>Scanning...</div>"; 
+        isDownloading = false; setGlobalStatus("Refreshing file list..."); sendCommand("ls"); 
+    }
+
+    function handleIncomingData(dataView) {
+        const value = dataView;
+        const decoder = new TextDecoder();
+        
+        if (value.byteLength < 20) { 
+            const str = decoder.decode(value);
+            if (str.includes("EOF")) { if (isDownloading) finishDownload(); return; }
+            if (str.includes("READY")) { processUploadStream(); return; }
+            if (str.includes("ERROR")) { uploadStatus.innerText = "Error: SD Error"; setGlobalStatus("SD Card Error encountered."); return; }
+            if (str.includes("SET:")) { setGlobalStatus("RTC Time Synced successfully."); return; }
+        }
+
+        if (!isDownloading && value.byteLength < 100) {
+            const str = decoder.decode(value);
+            if (str.includes("|")) {
+                const parts = str.split("|");
+                if(fileListContainer.innerHTML.includes("Scanning...")) fileListContainer.innerHTML = '';
+                const existing = document.getElementById('chk_' + parts[0]);
+                if(!existing) {
+                    const row = document.createElement("div"); row.style.padding = "5px"; row.style.fontSize = "13px"; row.style.borderBottom = "1px solid #eee";
+                    row.innerHTML = `<input type="checkbox" id="chk_${parts[0]}" value="${parts[0]}" data-size="${parts[1]}" style="margin-right:8px;"> <label for="chk_${parts[0]}">${parts[0]} (${formatBytes(parseInt(parts[1]))})</label>`;
+                    fileListContainer.appendChild(row);
+                }
+                return;
+            }
+        }
+        
+        if (isDownloading) {
+            if (stopDownloadFlag) return; 
+            const chunk = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+            fileBuffer.push(chunk);
+            downloadBytesReceived += chunk.length;
+            
+            if(Math.random() > 0.8) {
+                const elapsed = (Date.now() - startTime) / 1000;
+                const speed = downloadBytesReceived / Math.max(elapsed, 0.1);
+                dlStatus.innerHTML = `Downloading: ${formatBytes(downloadBytesReceived)} / ${formatBytes(downloadTotalSize)}<br>Speed: ${formatBytes(speed)}/s`;
+            }
+        }
+    }
+
+    // --- FILE TRANSFERS ---
+    let downloadTotalSize = 0, downloadBytesReceived = 0, fileSelectValue = "";
+    
+    buttons.download.addEventListener('click', () => {
+        const checkboxes = fileListContainer.querySelectorAll('input[type="checkbox"]:checked');
+        if (checkboxes.length === 0) { logConsole("Select a file to download.", 'log-error'); return; }
+        const selected = checkboxes[0]; 
+        downloadTotalSize = parseInt(selected.dataset.size || 0); downloadBytesReceived = 0;
+        fileBuffer = []; isDownloading = true; stopDownloadFlag = false; buttons.cancelDl.disabled = false;
+        startTime = Date.now(); dlStatus.innerText = "Requesting " + selected.value + "...";
+        setGlobalStatus(`Download started: ${selected.value}`); fileSelectValue = selected.value;
+        sendCommand("get " + selected.value);
+    });
+
+    buttons.cancelDl.addEventListener('click', () => {
+        if(isDownloading) { stopDownloadFlag = true; isDownloading = false; buttons.cancelDl.disabled = true; dlStatus.innerText = "Cancelled by user."; setGlobalStatus("Download cancelled."); }
+    });
+
+    function finishDownload() {
+        if (isDownloading && !stopDownloadFlag) {
+            const blob = new Blob(fileBuffer, { type: "application/octet-stream" });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fileSelectValue; a.click();
+            isDownloading = false; buttons.cancelDl.disabled = true; dlStatus.innerText = "Download Complete!"; setGlobalStatus(`Download finished: ${fileSelectValue}`);
+        }
+    }
+
+    let uploadFileObj;
+    document.getElementById('fileInput').addEventListener('change', (e) => {
+        if(e.target.files.length > 0) { uploadFileObj = e.target.files[0]; uploadStatus.innerHTML = `Ready: ${uploadFileObj.name}<br>Size: ${formatBytes(uploadFileObj.size)}`; }
+    });
+    
+    buttons.startUpload.addEventListener('click', () => {
+        if(!uploadFileObj) return; stopUploadFlag = false; buttons.stopUpload.disabled = false; uploadStatus.innerText = "Initializing SD Card...";
+        // For serial to avoid command/data collisions, we send the exact file size to the C code.
+        sendCommand(currentConnection === 'SERIAL' ? `upload ${uploadFileObj.name} ${uploadFileObj.size}` : `upload ${uploadFileObj.name}`);
+    });
+    
+    buttons.stopUpload.addEventListener('click', () => { stopUploadFlag = true; buttons.stopUpload.disabled = true; uploadStatus.innerText = "Stopping..."; });
+
+    async function processUploadStream() {
+        uploadStatus.innerText = "Starting Stream...";
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            const bytes = new Uint8Array(e.target.result); const total = bytes.length;
+            const CHUNK_SIZE = currentConnection === 'SERIAL' ? 2048 : 500; 
+            let offset = 0; startTime = Date.now();
+            
+            let writer = null; if (currentConnection === 'SERIAL') writer = serialPort.writable.getWriter();
+
+            while(offset < total) {
+                if(stopUploadFlag) { uploadStatus.innerText = "Upload Cancelled"; if(writer) writer.releaseLock(); return; }
+                const chunk = bytes.slice(offset, Math.min(offset + CHUNK_SIZE, total));
+                
+                if (currentConnection === 'BLE') await uploadChar.writeValue(chunk);
+                else await writer.write(chunk);
+                offset += chunk.length;
+                
+                if (offset % (CHUNK_SIZE*5) === 0 || offset === total) {
+                    const elapsed = (Date.now() - startTime) / 1000;
+                    uploadStatus.innerHTML = `Uploading: ${((offset/total)*100).toFixed(0)}% (${formatBytes(offset)}/${formatBytes(total)})<br>Speed: ${formatBytes(offset / Math.max(elapsed, 0.1))}/s`;
+                }
+            }
+            if(writer) writer.releaseLock();
+            if (currentConnection === 'BLE') await sendCommand("end_upload");
+            buttons.stopUpload.disabled = true; uploadStatus.innerText = "Upload Complete!"; setTimeout(refreshFileList, 1000);
+        };
+        reader.readAsArrayBuffer(uploadFileObj);
+    }
+
+    // --- UTILITIES ---
+    buttons.syncTime.addEventListener('click', async () => { const now = new Date(); sendCommand(`time ${now.getFullYear()} ${now.getMonth() + 1} ${now.getDate()} ${now.getHours()} ${now.getMinutes()} ${now.getSeconds()}`); });
+    buttons.del.addEventListener('click', async () => {
+        const checkboxes = fileListContainer.querySelectorAll('input[type="checkbox"]:checked');
+        for (let chk of checkboxes) { await sendCommand("del " + chk.value); await new Promise(r => setTimeout(r, 200)); }
+        refreshFileList();
+    });
+    buttons.saveCfg.addEventListener('click', async () => {
+        await sendCommand(`cfg_rec ${document.getElementById('recLengthSlider').value}`); await new Promise(r => setTimeout(r, 200));
+        await sendCommand(`cfg_acc ${document.getElementById('actThresh').value} ${document.getElementById('actTime').value} ${document.getElementById('inaThresh').value} ${document.getElementById('inaTime').value}`);
+        setGlobalStatus("Configuration saved.");
+    });
+    buttons.defCfg.addEventListener('click', async () => {
+        document.getElementById('recLengthSlider').value = 30; document.getElementById('sVal').innerText = "30s";
+        document.getElementById('actThresh').value = 1800; document.getElementById('actTime').value = 10;
+        document.getElementById('inaThresh').value = 1500; document.getElementById('inaTime').value = 10;
+        await sendCommand(`cfg_rec 30`); await new Promise(r => setTimeout(r, 200));
+        await sendCommand(`cfg_acc 1800 10 1500 10`); setGlobalStatus("Defaults restored.");
+    });
+</script>
+</body>
+</html>

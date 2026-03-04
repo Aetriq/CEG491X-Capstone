@@ -97,6 +97,8 @@
 
 #include <errno.h>
 #include "rtc_module.h"
+#include "config_manager.h"
+#include "nvs_flash.h"
 
 /* ==================== 2.0 Pin mappings ====================  */
 
@@ -122,8 +124,8 @@
 #define SD_CS_PIN       GPIO_NUM_15
 
 /* LED Indicators */
-#define GPIO_RECORDING_LED  GPIO_NUM_36
-#define GPIO_NORMALOP_LED GPIO_NUM_37 
+#define GPIO_RECORDING_LED  GPIO_NUM_38
+#define GPIO_NORMALOP_LED GPIO_NUM_39 
 
 #define PIN_MODE_REC   GPIO_NUM_1
 
@@ -193,42 +195,6 @@ void blink_led(int times, int freq) {
         gpio_set_level(GPIO_RECORDING_LED, 0);
         vTaskDelay(pdMS_TO_TICKS(freq));
     }
-}
-
-/* Reads or initializes the index file to determine the next filename. */
-uint32_t get_and_update_index() {
-    uint32_t file_index = 1; 
-
-    /* 1. Attempt to read existing index */
-    FILE *f = fopen(INDEX_FILE_PATH, "rb");
-    if (f != NULL) {
-        if (fread(&file_index, sizeof(uint32_t), 1, f) == 1) { ESP_LOGI(TAG, "Found index file. Next ID: %lu", file_index); } 
-        else { ESP_LOGW(TAG, "Index file empty/corrupt. Resetting to 1."); }
-        fclose(f);
-    } 
-    else { ESP_LOGI(TAG, "No index file found. Starting new sequence at 1."); }
-
-    /* 2. Check existing files to avoid overwrites */
-    struct stat st;
-    char test_name[64];
-    while (1) {
-        snprintf(test_name, sizeof(test_name), "%s/log%lu.wav", MOUNT_POINT, file_index);
-        if (stat(test_name, &st) == 0) { file_index++; } 
-        else { break; }
-    }
-
-    /* 3. Write new index */
-    uint32_t next_index = file_index + 1;
-    f = fopen(INDEX_FILE_PATH, "wb");
-    
-    if (f != NULL) {
-        fwrite(&next_index, sizeof(uint32_t), 1, f);
-        fclose(f);
-    } 
-    /* Error = 30: Read-only file system. The card is locked or corrupted.
-     * Error = 5: I/O error. It's a wiring/power stability issue. */
-    else { ESP_LOGE(TAG, "Failed to update index file! Error: %d (%s)", errno, strerror(errno)); }
-    return file_index;
 }
 
 /* Initialize microphone component */
@@ -477,12 +443,21 @@ void recording_mode_main(void) {
     int_pin_init();
     rtc_init_and_sync();
 
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        nvs_flash_init();
+    }
+
+    device_config_t dev_cfg;
+    load_config(&dev_cfg);
+
     vTaskDelay(pdMS_TO_TICKS(50)); 
     adxl_write_reg(ADXL362_REG_SOFT_RESET, 0x52); 
     vTaskDelay(pdMS_TO_TICKS(50)); 
     
-    adxl_setup_activity(1800, 10);
-    adxl_setup_inactivity(1500, 10);
+    adxl_setup_activity(dev_cfg.accel_act_thresh, dev_cfg.accel_act_time);
+    adxl_setup_inactivity(dev_cfg.accel_inact_thresh, dev_cfg.accel_inact_time);
     
     adxl_write_reg(ADXL362_REG_INTMAP1, 0x40); 
     adxl_write_reg(ADXL362_REG_ACT_INACT_CTL, 0x35); 
@@ -535,10 +510,18 @@ void recording_mode_main(void) {
                     }
 
                     if (!aborted) {
+                        /* Get Current RTC Time for Filename */
+                        time_t now;
+                        struct tm timeinfo;
+                        time(&now);
+                        localtime_r(&now, &timeinfo);
                         
-                        uint32_t session_id = get_and_update_index();
                         char filename[64];
-                        snprintf(filename, sizeof(filename), "%s/log%lu.wav", MOUNT_POINT, session_id);
+                        /* Format: YYYYMMDD_HHMMSS.wav 24h time */
+                        snprintf(filename, sizeof(filename), "%s/%04d%02d%02d_%02d%02d%02d.wav", 
+                                 MOUNT_POINT, 
+                                 timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+                                 timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
                         
                         FILE *f = fopen(filename, "wb");
                         if (f) {
@@ -552,7 +535,8 @@ void recording_mode_main(void) {
                             
                             gpio_set_level(GPIO_RECORDING_LED, 1); 
                             
-                            int64_t end_time = esp_timer_get_time() + ((int64_t)RECORD_TIME_SEC * 1000000);
+                            /* Apply Custom Record Length */
+                            int64_t end_time = esp_timer_get_time() + ((int64_t)dev_cfg.record_length_sec * 1000000);
 
                             while (esp_timer_get_time() < end_time) {
                                 if (gpio_get_level(PIN_MODE_REC) != 0) break;

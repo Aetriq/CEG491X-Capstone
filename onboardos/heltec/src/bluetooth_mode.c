@@ -72,6 +72,13 @@
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
 #include "rtc_module.h"
+#include "config_manager.h"
+
+#include "driver/usb_serial_jtag.h"
+
+typedef enum { INTERFACE_NONE, INTERFACE_BLE, INTERFACE_SERIAL } active_interface_t;
+static active_interface_t current_interface = INTERFACE_NONE;
+static int upload_bytes_remaining = 0;
 
 /* ==================== 2.0 Pin Mappings ==================== */
 
@@ -80,7 +87,7 @@
 #define SD_PIN_NUM_CLK       GPIO_NUM_16
 #define SD_PIN_NUM_CS        GPIO_NUM_15
 
-#define GPIO_BT_LED          GPIO_NUM_35
+#define GPIO_BT_LED          GPIO_NUM_40
 #define PIN_MODE_BT          GPIO_NUM_0
 
 /* ==================== 3.0 Global Definitions & Variables ==================== */
@@ -114,8 +121,11 @@ static sdmmc_card_t *card;
 /* ==================== 4.0 Functions ==================== */
 
 esp_err_t send_notification(uint8_t *data, size_t len) {
-    if (device_connected) {
+    if (current_interface == INTERFACE_BLE && device_connected) {
         return esp_ble_gatts_send_indicate(gatts_if_handle, conn_id, echo_handle_table[IDX_CHAR_VAL_DATA], len, data, false);
+    } else if (current_interface == INTERFACE_SERIAL) {
+        usb_serial_jtag_write_bytes(data, len, pdMS_TO_TICKS(100));
+        return ESP_OK;
     }
     return ESP_FAIL;
 }
@@ -183,23 +193,60 @@ void process_command_task(void *pvParameters) {
                 send_eof();
             }
             else if (strncmp(pending_cmd, "upload ", 7) == 0) {
-                char *fname = pending_cmd + 7;
+                char fname[64] = {0};
+                int fsize = 0;
+                
+                sscanf(pending_cmd + 7, "%63s %d", fname, &fsize);
+                
                 snprintf(filepath, sizeof(filepath), "%s/%s", MOUNT_POINT, (fname[0]=='/')?fname+1:fname);
                 if(transfer_file) fclose(transfer_file);
                 unlink(filepath);
                 transfer_file = fopen(filepath, "wb");
-                if(transfer_file) { is_uploading = true; send_notification((uint8_t*)"READY", 5); }
+                
+                if(transfer_file) { 
+                    is_uploading = true; 
+                    upload_bytes_remaining = fsize; 
+                    send_notification((uint8_t*)"READY", 5); 
+                }
                 else { send_notification((uint8_t*)"ERROR", 5); }
             }
             else if (strcmp(pending_cmd, "end_upload") == 0) {
                 if(transfer_file) { fclose(transfer_file); transfer_file = NULL; }
                 is_uploading = false;
+                upload_bytes_remaining = 0;
+                send_eof();
+            }
+            else if (strncmp(pending_cmd, "del ", 4) == 0) {
+                char *fname = pending_cmd + 4;
+                snprintf(filepath, sizeof(filepath), "%s/%s", MOUNT_POINT, (fname[0]=='/')?fname+1:fname);
+                unlink(filepath);
+                send_eof();
+            }
+            else if (strncmp(pending_cmd, "cfg_rec ", 8) == 0) {
+                device_config_t cfg;
+                load_config(&cfg);
+                cfg.record_length_sec = atoi(pending_cmd + 8);
+                save_config(&cfg);
+                send_eof();
+            }
+            else if (strncmp(pending_cmd, "cfg_acc ", 8) == 0) {
+                device_config_t cfg;
+                load_config(&cfg);
+                int act_th, act_ti, ina_th, ina_ti;
+                
+                if (sscanf(pending_cmd + 8, "%d %d %d %d", &act_th, &act_ti, &ina_th, &ina_ti) == 4) {
+                    cfg.accel_act_thresh = act_th;
+                    cfg.accel_act_time = act_ti;
+                    cfg.accel_inact_thresh = ina_th;
+                    cfg.accel_inact_time = ina_ti;
+                    save_config(&cfg);
+                }
                 send_eof();
             }
             cmd_ready = false;
         }
 
-        if (is_downloading && device_connected && transfer_file) {
+        if (is_downloading && (device_connected || current_interface == INTERFACE_SERIAL) && transfer_file) {
             int len = fread(fileBuf, 1, TRANSFER_BLOCK_SIZE, transfer_file);
             if (len > 0) {
                 esp_err_t err = send_notification(fileBuf, len);
@@ -212,6 +259,59 @@ void process_command_task(void *pvParameters) {
                 fclose(transfer_file); transfer_file = NULL;
                 is_downloading = false;
                 send_eof();
+            }
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+    }
+}
+
+void serial_comm_task(void *pvParameters) {
+    usb_serial_jtag_driver_config_t jtag_cfg = {
+        .rx_buffer_size = 2048,
+        .tx_buffer_size = 2048,
+    };
+    usb_serial_jtag_driver_install(&jtag_cfg);
+
+    uint8_t rx_buf[1024];
+    while (1) {
+        int len = usb_serial_jtag_read_bytes(rx_buf, sizeof(rx_buf) - 1, pdMS_TO_TICKS(20));
+        if (len > 0) {
+            current_interface = INTERFACE_SERIAL; 
+
+            if (is_uploading && transfer_file) {
+                /* Intercept cancellation or new commands to prevent getting stuck */
+                if (len >= 10 && strncmp((char*)rx_buf, "end_upload", 10) == 0) {
+                    fclose(transfer_file); transfer_file = NULL;
+                    is_uploading = false; upload_bytes_remaining = 0; send_eof();
+                    continue;
+                } else if (len >= 7 && strncmp((char*)rx_buf, "upload ", 7) == 0) {
+                    /* Abort stuck upload state and process the new one */
+                    fclose(transfer_file); transfer_file = NULL;
+                    is_uploading = false; upload_bytes_remaining = 0;
+                    /* Fall through to the command parser below! */
+                } else {
+                    /* Write raw binary data directly to the SD Card */
+                    fwrite(rx_buf, 1, len, transfer_file);
+                    if (upload_bytes_remaining > 0) {
+                        upload_bytes_remaining -= len;
+                        if (upload_bytes_remaining <= 0) {
+                            fclose(transfer_file); transfer_file = NULL;
+                            is_uploading = false; send_eof(); 
+                        }
+                    }
+                    continue; /* Skip the command parser for raw binary */
+                }
+            }
+            
+            /* Parse Text Commands */
+            rx_buf[len] = '\0';
+            for(int i=0; i<len; i++) {
+                if(rx_buf[i] == '\r' || rx_buf[i] == '\n') rx_buf[i] = '\0';
+            }
+            if (strlen((char*)rx_buf) > 0) {
+                strncpy(pending_cmd, (char*)rx_buf, sizeof(pending_cmd)-1);
+                cmd_ready = true;
             }
         } else {
             vTaskDelay(pdMS_TO_TICKS(10));
@@ -274,6 +374,7 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
     case ESP_GATTS_CONNECT_EVT:
         conn_id = param->connect.conn_id;
         device_connected = true;
+        current_interface = INTERFACE_BLE;
         gpio_set_level(GPIO_BT_LED, 1);
         esp_ble_conn_update_params_t conn_params = {0};
 
@@ -346,6 +447,7 @@ void bluetooth_mode_main(void) {
 
     TaskHandle_t taskHandle = NULL;
     xTaskCreate(process_command_task, "sd_task", 4096 * 2, NULL, 5, &taskHandle);
+    xTaskCreate(serial_comm_task, "serial_task", 4096 * 2, NULL, 5, NULL);
 
     while (gpio_get_level(PIN_MODE_BT) == 0) {
         vTaskDelay(pdMS_TO_TICKS(1000));
