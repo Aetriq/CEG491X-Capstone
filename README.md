@@ -10,9 +10,9 @@
   <br />
 
   <p align="center">
-    <img src="https://img.shields.io/badge/Author-Max%20Doe-blue" alt="Max Liu">
+    <img src="https://img.shields.io/badge/Author-Max%20Liu-blue" alt="Max Liu">
     &nbsp;
-    <img src="https://img.shields.io/badge/Author-Alejandro%20Jesus%20Chong%20Escalante-blue" alt="John Smith">
+    <img src="https://img.shields.io/badge/Author-Alejandro%20Jesus%20Chong%20Escalante-blue" alt="Alejandro Jesus Chong Escalante">
     &nbsp;
     <img src="https://img.shields.io/badge/Author-Alex%20Gordon-blue" alt="Alex Gordon">
     &nbsp;
