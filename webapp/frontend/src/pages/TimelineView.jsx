@@ -8,6 +8,46 @@ import './TimelineView.css';
 const API_URL = '/api';
 const CACHE_KEY_PREFIX = 'echolog_timeline_';
 
+/** Parse event.time (e.g. "14:30" or "14:30:00") to minutes-from-midnight for sorting. */
+function parseTimeToMinutes(timeStr) {
+  if (!timeStr || typeof timeStr !== 'string') return 0;
+  const parts = timeStr.trim().split(':').map(Number);
+  if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+    const hours = parts[0];
+    const mins = parts[1];
+    const secs = parts[2] || 0;
+    return hours * 60 + mins + secs / 60;
+  }
+  return 0;
+}
+
+/** Sort events from earliest to latest by time, then renumber so Event column follows time order. */
+function sortEventsEarliestToLatest(events) {
+  if (!Array.isArray(events) || events.length === 0) return events;
+  if (events.length === 1) {
+    return [{ ...events[0], event_number: 1 }];
+  }
+  const sorted = [...events].sort((a, b) => {
+    const minA = parseTimeToMinutes(a.time);
+    const minB = parseTimeToMinutes(b.time);
+    if (minA !== minB) return minA - minB;
+    const numA = a.event_number != null ? a.event_number : 0;
+    const numB = b.event_number != null ? b.event_number : 0;
+    return numA - numB;
+  });
+  return sorted.map((ev, i) => ({ ...ev, event_number: i + 1 }));
+}
+
+/** Format a Day/Month label from an ISO datetime string. */
+function formatDayMonth(isoString) {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return '';
+  const day = d.getDate();
+  const month = d.toLocaleString(undefined, { month: 'short' });
+  return `${day} ${month}`;
+}
+
 function TimelineView() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -18,7 +58,6 @@ function TimelineView() {
   const [editingEvent, setEditingEvent] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [isFromCache, setIsFromCache] = useState(false);
-  const [savingToDb, setSavingToDb] = useState(false);
 
   useEffect(() => {
     loadTimeline();
@@ -52,14 +91,16 @@ function TimelineView() {
             transcript: ev.transcript ?? ev.text ?? ''
           };
         });
-        setEvents(normalized);
+        const sorted = sortEventsEarliestToLatest(normalized);
+        setEvents(sorted);
         setIsFromCache(true);
         setLoading(false);
         return;
       }
       const response = await axios.get(`${API_URL}/timelines/${id}`);
       setTimeline(response.data.timeline);
-      setEvents(response.data.timeline.events || []);
+      const apiEvents = response.data.timeline.events || [];
+      setEvents(sortEventsEarliestToLatest(apiEvents));
       setIsFromCache(false);
     } catch (error) {
       console.error('Error loading timeline:', error);
@@ -99,45 +140,9 @@ function TimelineView() {
     }
   };
 
-  const handleSaveToDatabase = async () => {
-    if (!user) {
-      alert('Please log in to save this timeline to the database.');
-      navigate('/login');
-      return;
-    }
-    setSavingToDb(true);
-    try {
-      const payload = {
-        deviceId: timeline?.device_id || null,
-        events: events.map((e) => ({
-          eventNumber: e.event_number ?? e.eventNumber,
-          time: e.time,
-          transcript: e.transcript || '',
-          latitude: e.latitude ?? null,
-          longitude: e.longitude ?? null,
-          audioFilePath: e.audio_file_path ?? e.audioFilePath ?? null,
-          audioDuration: e.audio_duration ?? e.audioDuration ?? null
-        }))
-      };
-      const response = await axios.post(`${API_URL}/timelines/generate`, payload);
-      const newTimeline = response.data.timeline;
-      const newId = newTimeline?.id;
-      localStorage.removeItem(`${CACHE_KEY_PREFIX}${id}`);
-      setIsFromCache(false);
-      if (newId != null && newId !== id) {
-        navigate(`/timeline/${newId}`, { replace: true });
-      } else {
-        setTimeline(newTimeline);
-        setEvents(newTimeline?.events || events);
-      }
-      alert(response.data.message || 'Timeline saved to database.');
-    } catch (error) {
-      console.error('Error saving to database:', error);
-      alert('Error saving to database: ' + (error.response?.data?.error || error.message));
-    } finally {
-      setSavingToDb(false);
-    }
-  };
+  // Legacy /draft/ flows used a manual "Save to database" button.
+  // With authenticated transcription, timelines are saved automatically,
+  // so we no longer expose a separate save-to-DB action in the UI.
 
   const handleEdit = (event) => {
     setEditingEvent(event.id);
@@ -206,31 +211,10 @@ function TimelineView() {
       </div>
 
       <div className="timeline-layout">
-        <aside className="sidebar">
-          <div className="logo">EchoLog</div>
-          <div className="device-card">
-            <div className="status-row">
-              <div className="status-label">Device-ID: {timeline.device_id || 'N/A'}</div>
-            </div>
-            <div className="status-row">
-              <div className="status-label">
-                Day: {new Date(timeline.date_generated).toLocaleDateString()}
-              </div>
-            </div>
-            <div className="device-actions">
-              <div className="btn">Change Day</div>
-              <div className="btn">Save data to computer</div>
-              <div className="btn">Synchronise clock</div>
-              <div className="btn">Clear Local Memory</div>
-            </div>
-          </div>
-        </aside>
-
         <main className="content">
           <div className="header-row">
             <div>
               <div className="title">Event Log</div>
-              <div className="subtitle">View device's storage.</div>
             </div>
           </div>
 
@@ -243,7 +227,7 @@ function TimelineView() {
                     <th style={{width: '88px'}}>Time</th>
                     <th>Transcript</th>
                     <th style={{width: '220px'}}>Position</th>
-                    <th style={{width: '170px', textAlign: 'right'}}>Audio</th>
+                    <th style={{width: '220px', textAlign: 'right'}}>Audio</th>
                     <th style={{width: '100px'}}>Actions</th>
                   </tr>
                 </thead>
@@ -251,7 +235,12 @@ function TimelineView() {
                   {events.map((event, index) => (
                     <tr key={event.id != null ? event.id : `event-${index}`}>
                       <td><span className="rownum">{event.event_number}</span></td>
-                      <td className="time">{event.time}</td>
+                      <td className="time">
+                        <div>{event.time}</div>
+                        <div className="time-date">
+                          {formatDayMonth(timeline.recording_start_time || timeline.date_generated)}
+                        </div>
+                      </td>
                       <td className="transcript">
                         {editingEvent === event.id ? (
                           <textarea
@@ -298,25 +287,9 @@ function TimelineView() {
         </main>
       </div>
       
-      <div className="bottom-right-buttons">
-        {isFromCache ? (
-          <div className="save-db-wrap">
-            <button
-              onClick={handleSaveToDatabase}
-              disabled={savingToDb}
-              className="save-btn save-db-btn"
-            >
-              {savingToDb ? 'Saving…' : 'Save to database'}
-            </button>
-            <span className="cache-hint">Unsaved (from transcription).</span>
-            <span className="cache-hint">Log in and save to store in database.</span>
-          </div>
-        ) : (
-          <button onClick={handleSave} className="save-btn">
-            Save Timeline
-          </button>
-        )}
-      </div>
+      {/* Timelines created while logged in are saved into the database automatically.
+          The old explicit "Save to database" / "Save Timeline" buttons have been removed
+          to simplify the UX. */}
     </div>
   );
 }

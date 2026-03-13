@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
@@ -6,6 +6,8 @@ import Register from './pages/Register';
 import Menu from './pages/Menu';
 import Home from './pages/Home';
 import TimelineView from './pages/TimelineView';
+import SettingsPage from './pages/SettingsPage';
+import AccountPage from './pages/AccountPage';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -18,6 +20,20 @@ function PrivateRoute({ children }) {
 }
 
 function App() {
+  // Apply persisted theme on initial load
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('theme');
+      if (stored === 'Dark') {
+        document.body.classList.add('dark-mode');
+      } else {
+        document.body.classList.remove('dark-mode');
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   return (
     <AuthProvider>
       <Router>
@@ -30,6 +46,22 @@ function App() {
             element={
               <PrivateRoute>
                 <Menu />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <PrivateRoute>
+                <SettingsPage onBack={() => window.history.back()} />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/account"
+            element={
+              <PrivateRoute>
+                <AccountPage onBack={() => window.history.back()} />
               </PrivateRoute>
             }
           />

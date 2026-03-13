@@ -15,6 +15,7 @@ function AudioPlayer({ eventId, audioFilePath }) {
     const audio = audioRef.current;
     if (!audio) return;
 
+    audio.volume = 1.0;
     const updateTime = () => setCurrentTime(audio.currentTime);
     const updateDuration = () => setDuration(audio.duration);
 
@@ -96,11 +97,11 @@ function AudioPlayer({ eventId, audioFilePath }) {
           {loading ? (
             <span className="loading-spinner">⏳</span>
           ) : isPlaying ? (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
               <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" fill="#fff"/>
             </svg>
           ) : (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
               <path d="M5 3v18l15-9L5 3z" fill="#fff"/>
             </svg>
           )}

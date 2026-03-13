@@ -2,6 +2,7 @@ const { db } = require('../database/db');
 
 class Timeline {
   static async create(userId, deviceId = null) {
+    console.log('[DB-DEBUG] Timeline.create', { userId, deviceId });
     return new Promise((resolve, reject) => {
       db.run(
         `INSERT INTO timelines (user_id, device_id, date_generated) VALUES (?, ?, datetime('now'))`,

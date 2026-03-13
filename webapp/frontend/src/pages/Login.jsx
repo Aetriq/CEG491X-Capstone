@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import './Login.css';
@@ -20,7 +20,7 @@ function Login() {
     setLoading(false);
 
     if (result.success) {
-      navigate('/menu');
+      navigate('/home');
     } else {
       setError(result.error);
     }
@@ -74,3 +74,4 @@ function Login() {
 }
 
 export default Login;
+

@@ -1,7 +1,7 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
-const { verifyToken } = require('../middleware/auth');
+const { verifyToken, optionalAuth } = require('../middleware/auth');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -48,56 +48,97 @@ const upload = multer({
   }
 });
 
-// Generate Timeline (from device data)
-router.post('/generate',
+// Generate Timeline â€” normalize cached/mock event shapes (event_number, null lat/long) before DB insert
+function normalizeGenerateEvents(req, res, next) {
+  if (req.body && req.body.deviceId === null) req.body.deviceId = undefined;
+  if (!req.body || !Array.isArray(req.body.events)) return next();
+  req.body.events = req.body.events.map((e, i) => {
+    const n = parseInt(e.eventNumber != null ? e.eventNumber : e.event_number, 10);
+    const lat = e.latitude;
+    const lon = e.longitude;
+    return {
+      eventNumber: Number.isFinite(n) && n > 0 ? n : i + 1,
+      time: (e.time != null && String(e.time).trim() !== "") ? String(e.time).trim() : "00:00:00",
+      transcript: e.transcript != null ? String(e.transcript) : "",
+      latitude: lat != null && lat !== "" && !Number.isNaN(parseFloat(lat)) ? parseFloat(lat) : null,
+      longitude: lon != null && lon !== "" && !Number.isNaN(parseFloat(lon)) ? parseFloat(lon) : null,
+      audioFilePath: e.audioFilePath || e.audio_file_path || null,
+      audioDuration: (function() {
+        const v = e.audioDuration != null ? e.audioDuration : e.audio_duration;
+        if (v == null) return null;
+        const num = parseInt(v, 10);
+        return Number.isFinite(num) ? num : null;
+      })()
+    };
+  });
+
+  next();
+}
+
+router.post("/generate",
   verifyToken,
+  normalizeGenerateEvents,
   [
-    body('deviceId').optional().isString(),
-    body('events').isArray().withMessage('Events array is required'),
-    body('events.*.eventNumber').isInt().withMessage('Event number is required'),
-    body('events.*.time').notEmpty().withMessage('Time is required'),
-    body('events.*.transcript').optional().isString(),
-    body('events.*.latitude').optional().isFloat(),
-    body('events.*.longitude').optional().isFloat()
+    body("events").custom((value) => {
+      if (!Array.isArray(value) || value.length < 1) {
+        throw new Error("At least one event is required");
+      }
+      return true;
+    })
   ],
   async (req, res) => {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
+        return res.status(400).json({ errors: errors.array(), error: errors.array()[0] && errors.array()[0].msg });
       }
-
+      if (!Timeline || !Event) {
+        return res.status(503).json({ error: "Database not available" });
+      }
       const { deviceId, events } = req.body;
 
-      // Create timeline
-      const timeline = await Timeline.create(req.user.id, deviceId);
+      console.log('[DB-DEBUG] /timelines/generate request', {
+        user: req.user ? { id: req.user.id, username: req.user.username, is_admin: req.user.is_admin } : null,
+        deviceId: deviceId ?? null,
+        eventsCount: Array.isArray(events) ? events.length : 0,
+        sampleEvent: Array.isArray(events) && events.length ? {
+          eventNumber: events[0].eventNumber,
+          time: events[0].time,
+          hasAudioPath: !!events[0].audioFilePath
+        } : null
+      });
 
-      // Create events
+      const timeline = await Timeline.create(req.user.id, deviceId);
+      console.log('[DB-DEBUG] /timelines/generate created timeline', { timelineId: timeline?.id, userId: req.user.id });
       const createdEvents = [];
       for (const eventData of events) {
         const event = await Event.create(timeline.id, {
           eventNumber: eventData.eventNumber,
           time: eventData.time,
-          transcript: eventData.transcript || '',
-          latitude: eventData.latitude || null,
-          longitude: eventData.longitude || null,
+          transcript: eventData.transcript || "",
+          latitude: eventData.latitude,
+          longitude: eventData.longitude,
           audioFilePath: eventData.audioFilePath || null,
           audioDuration: eventData.audioDuration || null
         });
         createdEvents.push(event);
+        console.log('[DB-DEBUG] /timelines/generate created event', {
+          eventId: event?.id,
+          timelineId: timeline.id,
+          eventNumber: eventData.eventNumber,
+          time: eventData.time,
+          hasAudioPath: !!eventData.audioFilePath
+        });
       }
-
-      // Fetch complete timeline with events
       const timelineData = await Timeline.findById(timeline.id);
       timelineData.events = createdEvents;
-
       res.status(201).json({
-        message: 'Timeline generated successfully',
+        message: "Timeline generated successfully",
         timeline: timelineData
       });
     } catch (error) {
-      console.error('Generate timeline error:', error);
-      res.status(500).json({ error: 'Error generating timeline' });
+      console.error("Generate timeline error:", error);
+      res.status(500).json({ error: error.message || "Error generating timeline" });
     }
   }
 );
@@ -134,25 +175,19 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// List user's timelines (no auth required for mock data)
-router.get('/', async (req, res) => {
+// List user's timelines — prefers database when user is authenticated
+router.get('/', optionalAuth, async (req, res) => {
   try {
-    // Use mock data if available
-    if (mockData) {
-      const timeline = mockData.getTimeline(1);
-      return res.json({ timelines: [timeline] });
-    }
-
-    // Use database if available
+    // Authenticated user + DB models → return ALL timelines for this user
     if (Timeline && req.user) {
       const timelines = await Timeline.findByUserId(req.user.id);
       return res.json({ timelines });
     }
 
-    // Return mock timeline if no auth
+    // Fallback: mock data (unauthenticated/demo mode)
     if (mockData) {
       const timeline = mockData.getTimeline(1);
-      return res.json({ timelines: [timeline] });
+      return res.json({ timelines: timeline ? [timeline] : [] });
     }
 
     res.json({ timelines: [] });
@@ -317,11 +352,29 @@ router.get('/:id/export', async (req, res) => {
       return res.status(500).json({ error: 'No data source available' });
     }
 
-    // Generate CSV
-    const csvHeader = 'Event,Time,Transcript,Latitude,Longitude\n';
-    const csvRows = events.map(event => {
-      const transcript = (event.transcript || '').replace(/"/g, '""');
-      return `${event.event_number},"${event.time}","${transcript}",${event.latitude || ''},${event.longitude || ''}`;
+    // Generate CSV including audio name only (no full path or URL)
+    const csvHeader = 'Event,Time,Transcript,Latitude,Longitude,AudioFileName\n';
+    const csvRows = events.map((event) => {
+      const transcriptRaw = event.transcript || '';
+      // Escape quotes and newlines for CSV
+      const transcript = transcriptRaw
+        .replace(/"/g, '""')
+        .replace(/\r?\n/g, ' ');
+
+      const lat = event.latitude != null ? event.latitude : '';
+      const lon = event.longitude != null ? event.longitude : '';
+
+      const audioPath = event.audio_file_path || event.audioFilePath || '';
+      const audioFileName = audioPath ? path.basename(audioPath) : '';
+
+      return [
+        event.event_number,
+        `"${event.time || ''}"`,
+        `"${transcript}"`,
+        lat,
+        lon,
+        `"${audioFileName.replace(/"/g, '""')}"`
+      ].join(',');
     }).join('\n');
 
     const csv = csvHeader + csvRows;
@@ -386,3 +439,4 @@ router.post('/:id/events/:eventId/audio',
 );
 
 module.exports = router;
+

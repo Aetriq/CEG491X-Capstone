@@ -31,7 +31,7 @@ function debugFileExists(filePath, context) {
   const exists = fs.existsSync(filePath);
   const absPath = path.resolve(filePath);
   const timestamp = new Date().toISOString();
-  
+
   if (exists) {
     try {
       const stats = fs.statSync(filePath);
@@ -48,7 +48,7 @@ function debugFileExists(filePath, context) {
     console.log(`[AUDIO-DEBUG] ❌ FILE MISSING [${context}] ${timestamp}`);
     console.log(`[AUDIO-DEBUG]   Expected path: ${absPath}`);
     console.log(`[AUDIO-DEBUG]   Relative path: ${filePath}`);
-    
+
     // Check if parent directory exists
     const parentDir = path.dirname(absPath);
     if (fs.existsSync(parentDir)) {
@@ -63,7 +63,7 @@ function debugFileExists(filePath, context) {
       console.log(`[AUDIO-DEBUG]   Parent directory missing: ${parentDir}`);
     }
   }
-  
+
   return exists;
 }
 
@@ -95,13 +95,13 @@ async function runFilterAndTranscribePipeline(inputPath, pythonCmd, model) {
   const filterScript = path.join(__dirname, '../scripts/filter_audio.py');
   const transcribeScript = path.join(__dirname, '../scripts/transcribe_audio.py');
   const chosenModel = model || process.env.WHISPER_MODEL || 'base';
-  
+
   const pipelineStartTime = new Date().toISOString();
   console.log(`[AUDIO-DEBUG] 🔄 PIPELINE START [${pipelineStartTime}]`);
   console.log(`[AUDIO-DEBUG]   Input file: ${inputPath}`);
   console.log(`[AUDIO-DEBUG]   Python cmd: ${pythonCmd}`);
   console.log(`[AUDIO-DEBUG]   Whisper model: ${chosenModel}`);
-  
+
   // Verify input file exists
   debugFileExists(inputPath, 'PIPELINE-INPUT');
 
@@ -113,7 +113,7 @@ async function runFilterAndTranscribePipeline(inputPath, pythonCmd, model) {
     try {
       await execPromise(`${pythonCmd} "${filterScript}" "${inputPath}" "${outputFile}" 400 3 lowpass`);
       console.log(`[AUDIO-DEBUG] 🎚️ FILTERING COMPLETE`);
-      
+
       if (fs.existsSync(outputFile)) {
         filteredAudioPath = outputFile;
         debugFileExists(filteredAudioPath, 'FILTERED-OUTPUT');
@@ -133,7 +133,7 @@ async function runFilterAndTranscribePipeline(inputPath, pythonCmd, model) {
 
   // Verify filtered audio exists before transcription
   debugFileExists(filteredAudioPath, 'PRE-TRANSCRIBE');
-  
+
   let segments = [];
   let text = '';
   let language = '';
@@ -142,13 +142,13 @@ async function runFilterAndTranscribePipeline(inputPath, pythonCmd, model) {
     console.log(`[AUDIO-DEBUG] 📝 TRANSCRIBING START`);
     console.log(`[AUDIO-DEBUG]   Audio file: ${filteredAudioPath}`);
     console.log(`[AUDIO-DEBUG]   JSON output: ${transcriptionJsonPath}`);
-    
+
     try {
       const { stdout } = await execPromise(
         `${pythonCmd} "${transcribeScript}" "${filteredAudioPath}" --model ${chosenModel} --output_json "${transcriptionJsonPath}"`
       );
       console.log(`[AUDIO-DEBUG] 📝 TRANSCRIBING COMPLETE`);
-      
+
       const raw = (stdout && typeof stdout === 'string') ? stdout.trim() : '';
       let parsed = null;
       try {
@@ -182,7 +182,7 @@ async function runFilterAndTranscribePipeline(inputPath, pythonCmd, model) {
     console.log(`[AUDIO-DEBUG] ❌ Transcription script not found: ${transcribeScript}`);
     segments = [{ start: 0, end: 0, text: 'Transcription script not found.' }];
   }
-  
+
   // Final check: verify filtered audio still exists before returning
   const finalCheck = debugFileExists(filteredAudioPath, 'PIPELINE-END');
   if (!finalCheck) {
@@ -190,13 +190,14 @@ async function runFilterAndTranscribePipeline(inputPath, pythonCmd, model) {
     console.log(`[AUDIO-DEBUG]   This file will cause 404 errors when accessed!`);
     console.log(`[AUDIO-DEBUG]   Path: ${path.resolve(filteredAudioPath)}`);
   }
-  
+
   const pipelineEndTime = new Date().toISOString();
   console.log(`[AUDIO-DEBUG] ✅ PIPELINE COMPLETE [${pipelineEndTime}]`);
   console.log(`[AUDIO-DEBUG]   Final audio path: ${filteredAudioPath}`);
   console.log(`[AUDIO-DEBUG]   File exists: ${finalCheck}`);
-  
-  return { segments, text, language, filteredAudioPath };
+
+  // Return both filtered path (used for transcription) and original path (used for playback)
+  return { segments, text, language, filteredAudioPath, originalAudioPath: inputPath };
 }
 
 /** Format a Date as recorded time (HH:MM - when the audio was recorded). */
@@ -205,8 +206,10 @@ function formatRecordedTime(date) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-/** Build a single event per recording: time = recording start, transcript = full text. */
-function eventsWithRecordedTime(segments, baseTime, filteredAudioPath, fullText) {
+/** Build a single event per recording: time = recording start, transcript = full text.
+ *  audioFilePath is the path used for playback (unfiltered/original audio).
+ */
+function eventsWithRecordedTime(segments, baseTime, audioFilePath, fullText) {
   const base = baseTime instanceof Date ? baseTime : new Date(baseTime);
   const segs = segments || [];
   const transcript = (typeof fullText === 'string' && fullText.trim() !== '')
@@ -221,7 +224,8 @@ function eventsWithRecordedTime(segments, baseTime, filteredAudioPath, fullText)
     transcript,
     latitude: null,
     longitude: null,
-    audio_file_path: filteredAudioPath,
+    // Use unfiltered/original audio for playback on the timeline
+    audio_file_path: audioFilePath,
     audio_duration: audioDurationMs
   }];
 }
@@ -245,6 +249,141 @@ function getRecordingStartTime(audioPath) {
   return now;
 }
 
+/**
+ * Try to parse recording time from a WAV header (e.g. BWF 'bext' chunk).
+ * Returns a Date or null if not present/parsable.
+ */
+function getRecordingStartTimeFromWavHeader(audioPath) {
+  if (!audioPath || path.extname(audioPath).toLowerCase() !== '.wav') {
+    return null;
+  }
+  try {
+    const fd = fs.openSync(audioPath, 'r');
+    // Read first 64KB which should contain RIFF header and common chunks
+    const maxBytes = 64 * 1024;
+    const stat = fs.fstatSync(fd);
+    const toRead = Math.min(maxBytes, stat.size);
+    const buf = Buffer.alloc(toRead);
+    fs.readSync(fd, buf, 0, toRead, 0);
+    fs.closeSync(fd);
+
+    if (buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WAVE') {
+      console.log('[AUDIO-DEBUG] 📄 Not a RIFF/WAVE file when parsing header time:', audioPath);
+      return null;
+    }
+
+    let offset = 12; // skip RIFF header
+    while (offset + 8 <= buf.length) {
+      const chunkId = buf.toString('ascii', offset, offset + 4);
+      const chunkSize = buf.readUInt32LE(offset + 4);
+      const chunkDataStart = offset + 8;
+      const nextOffset = chunkDataStart + chunkSize;
+
+      if (chunkId === 'bext') {
+        // Broadcast Wave Format: OriginationDate & OriginationTime fields
+        // layout: 256 desc, 32 originator, 32 originatorRef, 10 date, 8 time, ...
+        const dateOffset = chunkDataStart + 256 + 32 + 32;
+        const timeOffset = dateOffset + 10;
+        if (timeOffset + 8 <= buf.length) {
+          const dateStr = buf.toString('ascii', dateOffset, dateOffset + 10).trim(); // "YYYY-MM-DD"
+          const timeStr = buf.toString('ascii', timeOffset, timeOffset + 8).trim(); // "HH:MM:SS"
+          const combined = `${dateStr}T${timeStr}`;
+          const d = new Date(combined);
+          if (!isNaN(d.getTime())) {
+            console.log('[AUDIO-DEBUG] 📅 Recording start time from WAV BWF header (bext):', d.toISOString());
+            console.log('[AUDIO-DEBUG]   File:', audioPath);
+            return d;
+          }
+        }
+      }
+
+      if (nextOffset <= offset || nextOffset > buf.length) {
+        break; // safety against malformed sizes
+      }
+      offset = nextOffset + (nextOffset % 2); // chunks are word-aligned
+    }
+
+    console.log('[AUDIO-DEBUG] ℹ️ No usable recording time found in WAV header:', audioPath);
+  } catch (err) {
+    console.log('[AUDIO-DEBUG] ⚠️ Error parsing WAV header for recording time:', err.message);
+  }
+  return null;
+}
+
+/**
+ * Try to parse recording time from WAV filename pattern YYYYMMDD_HHMMSS.
+ * Returns a Date or null if not present/parsable.
+ */
+function getRecordingStartTimeFromFileName(audioPath) {
+  if (!audioPath) return null;
+  try {
+    const base = path.basename(audioPath);
+    const match = base.match(/(\d{8})_(\d{6})/);
+    if (!match) return null;
+    const [, datePart, timePart] = match; // YYYYMMDD, HHMMSS
+    const year = parseInt(datePart.slice(0, 4), 10);
+    const month = parseInt(datePart.slice(4, 6), 10);
+    const day = parseInt(datePart.slice(6, 8), 10);
+    const hour = parseInt(timePart.slice(0, 2), 10);
+    const minute = parseInt(timePart.slice(2, 4), 10);
+    const second = parseInt(timePart.slice(4, 6), 10);
+
+    const iso = new Date(year, month - 1, day, hour, minute, second);
+    if (!isNaN(iso.getTime())) {
+      console.log('[AUDIO-DEBUG] 📅 Recording start time from WAV filename (YYYYMMDD_HHMMSS):', iso.toISOString());
+      console.log('[AUDIO-DEBUG]   File:', audioPath);
+      return iso;
+    }
+  } catch (err) {
+    console.log('[AUDIO-DEBUG] ⚠️ Error parsing filename for recording time:', err.message);
+  }
+  return null;
+}
+
+/**
+ * Prefer filename-based recording time (YYYYMMDD_HHMMSS),
+ * then client-provided time (device/local metadata),
+ * then WAV header (BWF), else fall back to file mtime.
+ */
+function resolveRecordingStartTime(audioPath, clientRecordingStartTime) {
+  // 1) Filename pattern (YYYYMMDD_HHMMSS)
+  const nameTime = getRecordingStartTimeFromFileName(audioPath);
+  if (nameTime) {
+    console.log(
+      '[AUDIO-DEBUG] ✅ Using filename-based recording time (YYYYMMDD_HHMMSS) as final value:',
+      nameTime.toISOString()
+    );
+    return nameTime;
+  } else {
+    if (audioPath) {
+      console.log(
+        '[AUDIO-DEBUG] ℹ️ No usable filename-based recording time (YYYYMMDD_HHMMSS) found for:',
+        audioPath
+      );
+    } else {
+      console.log('[AUDIO-DEBUG] ℹ️ No audioPath provided for filename-based time resolution');
+    }
+  }
+
+  // 2) Client-provided recording time
+  if (clientRecordingStartTime) {
+    const d = new Date(clientRecordingStartTime);
+    if (!isNaN(d.getTime())) {
+      console.log(`[AUDIO-DEBUG] 📅 Using client recording_start_time (from device/local metadata): ${d.toISOString()}`);
+      return d;
+    }
+  }
+
+  // 3) WAV header (BWF)
+  const wavHeaderTime = getRecordingStartTimeFromWavHeader(audioPath);
+  if (wavHeaderTime) {
+    return wavHeaderTime;
+  }
+
+  // 4) File mtime fallback
+  return getRecordingStartTime(audioPath);
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     console.log(`[AUDIO-DEBUG] 📤 UPLOAD DESTINATION`);
@@ -253,13 +392,14 @@ const storage = multer.diskStorage({
     cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const filename = 'audio-' + uniqueSuffix + path.extname(file.originalname);
-    const fullPath = path.join(uploadsDir, filename);
+    // Use the downloaded/original filename; do not rename, but strip any directory components
+    const originalName = file.originalname || 'audio-unknown';
+    const safeName = path.basename(originalName);
+    const fullPath = path.join(uploadsDir, safeName);
     console.log(`[AUDIO-DEBUG] 📤 UPLOAD FILENAME`);
-    console.log(`[AUDIO-DEBUG]   Generated filename: ${filename}`);
+    console.log(`[AUDIO-DEBUG]   Using original filename (basename): ${safeName}`);
     console.log(`[AUDIO-DEBUG]   Full path: ${fullPath}`);
-    cb(null, filename);
+    cb(null, safeName);
   }
 });
 
@@ -289,6 +429,8 @@ try {
   console.log('Database models not available for audio routes');
 }
 
+const { optionalAuth } = require('../middleware/auth');
+
 // Use mock data when database is not available
 const USE_MOCK_DATA = process.env.USE_MOCK_DATA !== 'false';
 let mockData = null;
@@ -314,7 +456,7 @@ router.get('/:eventId', async (req, res) => {
     console.log(`[AUDIO-DEBUG] 🎵 AUDIO ACCESS via filePath parameter [${new Date().toISOString()}]`);
     console.log(`[AUDIO-DEBUG]   Event ID: ${req.params.eventId}`);
     console.log(`[AUDIO-DEBUG]   Requested file path: ${requestedPath}`);
-    
+
     // Resolve and validate the path
     let filePath;
     try {
@@ -325,19 +467,19 @@ router.get('/:eventId', async (req, res) => {
         // If relative, resolve from uploads directory
         filePath = path.resolve(uploadsDir, requestedPath);
       }
-      
+
       // Security check: ensure path is within uploads directory
       const uploadsDirResolved = path.resolve(uploadsDir);
       if (!filePath.startsWith(uploadsDirResolved)) {
         console.log(`[AUDIO-DEBUG] ⛔ Security: File path outside uploads directory`);
         return res.status(403).json({ error: 'Invalid file path' });
       }
-      
+
       const fileExists = debugFileExists(filePath, 'FILEPATH-PARAM');
       if (!fileExists) {
         return res.status(404).json({ error: 'Audio file not found' });
       }
-      
+
       // Serve the file
       const ext = path.extname(filePath).toLowerCase();
       const contentTypeMap = {
@@ -347,28 +489,28 @@ router.get('/:eventId', async (req, res) => {
         '.m4a': 'audio/mp4'
       };
       const contentType = contentTypeMap[ext] || 'audio/wav';
-      
+
       res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Disposition', `inline; filename="${path.basename(filePath)}"`);
       res.setHeader('Accept-Ranges', 'bytes');
-      
+
       const fileStream = fs.createReadStream(filePath);
       fileStream.pipe(res);
-      
+
       fileStream.on('error', (err) => {
         console.error(`[AUDIO-DEBUG] ❌ Error streaming file: ${err.message}`);
         if (!res.headersSent) {
           res.status(500).json({ error: 'Error streaming audio file' });
         }
       });
-      
+
       return;
     } catch (err) {
       console.error(`[AUDIO-DEBUG] ❌ Error processing filePath parameter: ${err.message}`);
       return res.status(400).json({ error: 'Invalid file path' });
     }
   }
-  
+
   // Original event-based lookup continues below...
   const accessTime = new Date().toISOString();
   try {
@@ -379,7 +521,7 @@ router.get('/:eventId', async (req, res) => {
     console.log(`[AUDIO-DEBUG]   MockData: ${mockData ? '✅ Available' : '❌ Not available'}`);
     console.log(`[AUDIO-DEBUG]   Database (Event model): ${Event ? '✅ Available' : '❌ Not available'}`);
     console.log(`[AUDIO-DEBUG]   Database (Timeline model): ${Timeline ? '✅ Available' : '❌ Not available'}`);
-    
+
     let event = null;
     let eventSource = 'none';
 
@@ -417,17 +559,17 @@ router.get('/:eventId', async (req, res) => {
       console.log(`[AUDIO-DEBUG]   3. Using mockData but event is in database (or vice versa)`);
       console.log(`[AUDIO-DEBUG]   📝 Check server logs for when event ${eventId} was created`);
       console.log(`[AUDIO-DEBUG]   💡 Solution: Use database for persistent storage across restarts`);
-      
+
       // FALLBACK: Try to find audio file even when event is missing (for cached timelines)
       console.log(`[AUDIO-DEBUG] 🔍 FALLBACK: Searching for audio file for event ${eventId}...`);
-      
+
       // Event ID pattern: timelineId * 1000 + (eventNumber - 1)
       // For event 1000: timelineId = 1, eventNumber = 1
       const timelineId = Math.floor(eventId / 1000);
       const eventNumber = (eventId % 1000) + 1;
-      
+
       console.log(`[AUDIO-DEBUG]   Inferred timeline ID: ${timelineId}, event number: ${eventNumber}`);
-      
+
       // Search for audio files in filtered directory (most recent first)
       // This is a fallback for when events are lost due to server restart
       let foundAudioPath = null;
@@ -441,9 +583,9 @@ router.get('/:eventId', async (req, res) => {
               stats: fs.statSync(path.join(filteredDir, f))
             }))
             .sort((a, b) => b.stats.mtime.getTime() - a.stats.mtime.getTime()); // Most recent first
-          
+
           console.log(`[AUDIO-DEBUG]   Found ${files.length} audio files in filtered directory`);
-          
+
           // Try to find matching file:
           // 1. Look for files created around the time the event would have been created
           // 2. For timeline 1, event 1 (eventId 1000), prefer most recent file
@@ -457,11 +599,11 @@ router.get('/:eventId', async (req, res) => {
             console.log(`[AUDIO-DEBUG]   File modified: ${files[0].stats.mtime.toISOString()}`);
             console.log(`[AUDIO-DEBUG]   ⚠️ NOTE: This is a best-effort match. For accurate playback,`);
             console.log(`[AUDIO-DEBUG]      frontend should pass audio_file_path via filePath query parameter.`);
-            
+
             // Verify file exists
             if (fs.existsSync(foundAudioPath)) {
               console.log(`[AUDIO-DEBUG]   ✅ Fallback file exists, serving audio`);
-              
+
               // Create a mock event object for serving
               event = {
                 id: eventId,
@@ -478,11 +620,11 @@ router.get('/:eventId', async (req, res) => {
       } catch (searchErr) {
         console.log(`[AUDIO-DEBUG]   ⚠️ Error searching for fallback audio: ${searchErr.message}`);
       }
-      
+
       // If still no event, return 404
       if (!event) {
         console.log(`[AUDIO-DEBUG] ❌ No fallback audio file found for event ${eventId}`);
-        return res.status(404).json({ 
+        return res.status(404).json({
           error: 'Event not found',
           message: 'Event was likely lost due to server restart. Audio file may still exist but event metadata is missing.'
         });
@@ -558,10 +700,10 @@ router.get('/:eventId', async (req, res) => {
       console.error(`[AUDIO-DEBUG]   Error code: ${err.code}`);
       console.error(`[AUDIO-DEBUG]   Error message: ${err.message}`);
       console.error(`[AUDIO-DEBUG]   File path: ${filePath}`);
-      
+
       // Check if file still exists
       debugFileExists(filePath, `STREAM-ERROR-${eventId}`);
-      
+
       if (!res.headersSent) {
         res.status(500).json({ error: 'Error streaming audio file' });
       }
@@ -583,7 +725,7 @@ router.get('/:eventId', async (req, res) => {
 
 // Filter and transcribe audio - no auth required
 // Pipeline: upload -> filter -> transcribe -> create timeline -> return timelineId
-router.post('/filter-and-transcribe', (req, res, next) => {
+router.post('/filter-and-transcribe', optionalAuth, (req, res, next) => {
   upload.single('audio')(req, res, (err) => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') {
@@ -610,13 +752,13 @@ router.post('/filter-and-transcribe', (req, res, next) => {
     const inputFile = req.file.path;
     console.log(`[AUDIO-DEBUG] 📤 Upload received:`);
     console.log(`[AUDIO-DEBUG]   Original name: ${req.file.originalname}`);
-    console.log(`[AUDIO-DEBUG]   Saved path: ${inputFile}`);
+    console.log(`[AUDIO-DEBUG]   Saved path (original audio): ${inputFile}`);
     console.log(`[AUDIO-DEBUG]   Size: ${req.file.size} bytes`);
     console.log(`[AUDIO-DEBUG]   MIME type: ${req.file.mimetype}`);
-    
+
     // Verify uploaded file exists
     debugFileExists(inputFile, 'UPLOAD-RECEIVED');
-    
+
     let pythonCmd;
     try {
       pythonCmd = await getPythonCommand();
@@ -625,35 +767,51 @@ router.post('/filter-and-transcribe', (req, res, next) => {
       console.error(`[AUDIO-DEBUG] ❌ getPythonCommand failed:`, pyErr);
       return res.status(500).json({ error: 'Python not available. Set ECHOLOG_PYTHON or install Python.' });
     }
-    
-    const { segments, text: fullText, filteredAudioPath } = await runFilterAndTranscribePipeline(inputFile, pythonCmd);
-    const recordingStartTime = getRecordingStartTime(filteredAudioPath);
-    
+
+    const { segments, text: fullText, filteredAudioPath, originalAudioPath } = await runFilterAndTranscribePipeline(inputFile, pythonCmd);
+    const clientTime = req.body && req.body.recording_start_time;
+    // Prefer client-provided recording time and fall back to original audio file mtime
+    const recordingStartTime = resolveRecordingStartTime(originalAudioPath, clientTime);
+
+    // Log key metadata for debugging recording time coming from device/frontend vs file mtime
+    try {
+      const fsStats = fs.existsSync(originalAudioPath) ? fs.statSync(originalAudioPath) : null;
+      console.log('[AUDIO-DEBUG] 🎧 Original audio metadata (filter-and-transcribe):', {
+        originalAudioPath,
+        sizeBytes: fsStats ? fsStats.size : null,
+        mtime: fsStats ? fsStats.mtime.toISOString() : null,
+        recordingTimeFromClientRaw: clientTime || null, // time provided by frontend based on device metadata
+        resolvedRecordingStartTime: recordingStartTime.toISOString() // final time used for timeline "Time" column
+      });
+    } catch (metaErr) {
+      console.log('[AUDIO-DEBUG] ⚠️ Failed to log original audio metadata:', metaErr.message);
+    }
+
     console.log(`[AUDIO-DEBUG] 📝 Transcription complete, preparing to attach audio:`);
     console.log(`[AUDIO-DEBUG]   Filtered audio path: ${filteredAudioPath}`);
     console.log(`[AUDIO-DEBUG]   Segments count: ${segments.length}`);
     console.log(`[AUDIO-DEBUG]   Transcript length: ${fullText ? fullText.length : 0} chars`);
 
-    // Use mock data if available
-    if (mockData && typeof mockData.addTranscriptionTimeline === 'function') {
+    // Use mock only when not saving to DB (Bearer + DB models => SQLite)
+    if (mockData && typeof mockData.addTranscriptionTimeline === 'function' && !(req.user && Event && Timeline)) {
       try {
         console.log(`[AUDIO-DEBUG] 💾 Saving to mockData...`);
-        console.log(`[AUDIO-DEBUG]   Audio path to save: ${filteredAudioPath}`);
-        
+        console.log(`[AUDIO-DEBUG]   Original audio path to save: ${originalAudioPath}`);
+
         // Verify file exists before saving reference
-        const existsBeforeSave = debugFileExists(filteredAudioPath, 'BEFORE-MOCK-SAVE');
+        const existsBeforeSave = debugFileExists(originalAudioPath, 'BEFORE-MOCK-SAVE');
         if (!existsBeforeSave) {
           console.log(`[AUDIO-DEBUG] ⚠️⚠️⚠️ WARNING: Audio file missing before saving to mockData!`);
         }
-        
-        const timelineId = mockData.addTranscriptionTimeline(segments, filteredAudioPath, recordingStartTime);
+
+        const timelineId = mockData.addTranscriptionTimeline(segments, originalAudioPath, recordingStartTime);
         const events = mockData.getEvents(timelineId);
         const timeline = mockData.getTimeline(timelineId);
-        
+
         console.log(`[AUDIO-DEBUG] ✅ MockData timeline created: ${timelineId}`);
         console.log(`[AUDIO-DEBUG]   Events count: ${events.length}`);
         console.log(`[AUDIO-DEBUG]   Event IDs: ${events.map(e => e.id).join(', ')}`);
-        
+
         // Verify audio paths in events
         events.forEach((ev, idx) => {
           console.log(`[AUDIO-DEBUG]   Event ${idx + 1} (ID: ${ev.id}):`);
@@ -662,7 +820,7 @@ router.post('/filter-and-transcribe', (req, res, next) => {
             debugFileExists(ev.audio_file_path, `EVENT-${ev.id}-AUDIO`);
           }
         });
-        
+
         // Warn about persistence
         if (!Event || !Timeline) {
           console.log(`[AUDIO-DEBUG] ⚠️⚠️⚠️ PERSISTENCE WARNING:`);
@@ -670,15 +828,15 @@ router.post('/filter-and-transcribe', (req, res, next) => {
           console.log(`[AUDIO-DEBUG]   Timeline ID: ${timelineId}, Event IDs: ${events.map(e => e.id).join(', ')}`);
           console.log(`[AUDIO-DEBUG]   💡 Enable database (SQLite) for persistent storage`);
         }
-        
+
         return res.json({
           message: 'Audio filtered and transcribed',
           timelineId,
           recording_start_time: recordingStartTime.toISOString(),
           events,
           timeline,
-          ...(Event && Timeline ? {} : { 
-            warning: 'Using in-memory storage - data will be lost on server restart. Enable database for persistence.' 
+          ...(Event && Timeline ? {} : {
+            warning: 'Using in-memory storage - data will be lost on server restart. Enable database for persistence.'
           })
         });
       } catch (addErr) {
@@ -696,7 +854,7 @@ router.post('/filter-and-transcribe', (req, res, next) => {
         message: 'Audio processed (mock mode)',
         timelineId: draftId,
         recording_start_time: recordingStartTime.toISOString(),
-        events: eventsWithRecordedTime(segments, recordingStartTime, filteredAudioPath, fullText)
+        events: eventsWithRecordedTime(segments, recordingStartTime, originalAudioPath, fullText)
       });
     }
 
@@ -706,66 +864,66 @@ router.post('/filter-and-transcribe', (req, res, next) => {
         message: 'Audio filtered and transcribed. Log in and use "Save to database" on the timeline to store it.',
         timelineId: draftId,
         recording_start_time: recordingStartTime.toISOString(),
-        events: eventsWithRecordedTime(segments, recordingStartTime, filteredAudioPath, fullText)
+        events: eventsWithRecordedTime(segments, recordingStartTime, originalAudioPath, fullText)
       });
     }
 
     try {
       console.log(`[AUDIO-DEBUG] 💾 Saving to database...`);
       console.log(`[AUDIO-DEBUG]   User ID: ${req.user.id}`);
-      console.log(`[AUDIO-DEBUG]   Audio path to save: ${filteredAudioPath}`);
-      
+      console.log(`[AUDIO-DEBUG]   Original audio path to save: ${originalAudioPath}`);
+
       // Verify file exists before saving to database
-      const existsBeforeDbSave = debugFileExists(filteredAudioPath, 'BEFORE-DB-SAVE');
+      const existsBeforeDbSave = debugFileExists(originalAudioPath, 'BEFORE-DB-SAVE');
       if (!existsBeforeDbSave) {
         console.log(`[AUDIO-DEBUG] ⚠️⚠️⚠️ WARNING: Audio file missing before saving to database!`);
       }
-      
+
       const timeline = await Timeline.create(req.user.id, null);
-      const [singleEvent] = eventsWithRecordedTime(segments, recordingStartTime, filteredAudioPath, fullText);
-      
+      const [singleEvent] = eventsWithRecordedTime(segments, recordingStartTime, originalAudioPath, fullText);
+
       console.log(`[AUDIO-DEBUG] 📋 Creating event in database:`);
       console.log(`[AUDIO-DEBUG]   Timeline ID: ${timeline.id}`);
       console.log(`[AUDIO-DEBUG]   Event number: ${singleEvent.event_number}`);
-      console.log(`[AUDIO-DEBUG]   Audio path: ${singleEvent.audio_file_path}`);
-      
+      console.log(`[AUDIO-DEBUG]   Audio path (unfiltered): ${singleEvent.audio_file_path}`);
+
       const createdEvent = await Event.create(timeline.id, {
         eventNumber: singleEvent.event_number,
         time: singleEvent.time,
         transcript: singleEvent.transcript,
         latitude: null,
         longitude: null,
-        audioFilePath: filteredAudioPath,
+        audioFilePath: originalAudioPath,
         audioDuration: singleEvent.audio_duration
       });
-      
+
       console.log(`[AUDIO-DEBUG] ✅ Event created in database:`);
       console.log(`[AUDIO-DEBUG]   Event ID: ${createdEvent.id}`);
       console.log(`[AUDIO-DEBUG]   Audio path stored: ${createdEvent.audioFilePath || createdEvent.audio_file_path || 'CHECK DB'}`);
-      
+
       // Verify file still exists after DB save
       debugFileExists(filteredAudioPath, 'AFTER-DB-SAVE');
-      
+
       return res.json({
         message: 'Audio filtered and transcribed successfully',
         timelineId: timeline.id,
         recording_start_time: recordingStartTime.toISOString(),
-        events: eventsWithRecordedTime(segments, recordingStartTime, filteredAudioPath, fullText)
+        events: eventsWithRecordedTime(segments, recordingStartTime, originalAudioPath, fullText)
       });
     } catch (dbErr) {
       console.error(`[AUDIO-DEBUG] ❌ Database save failed:`, dbErr);
       console.error(`[AUDIO-DEBUG]   Stack: ${dbErr.stack}`);
       console.error(`[AUDIO-DEBUG]   Returning draft response`);
-      
+
       // Verify file still exists even after DB error
       debugFileExists(filteredAudioPath, 'AFTER-DB-ERROR');
-      
+
       const draftId = 'draft-' + Date.now();
       return res.json({
         message: 'Audio transcribed. Database unavailable; timeline saved locally. Log in and use "Save to database" to retry.',
         timelineId: draftId,
         recording_start_time: recordingStartTime.toISOString(),
-        events: eventsWithRecordedTime(segments, recordingStartTime, filteredAudioPath, fullText)
+        events: eventsWithRecordedTime(segments, recordingStartTime, originalAudioPath, fullText)
       });
     }
   } catch (error) {
@@ -775,18 +933,18 @@ router.post('/filter-and-transcribe', (req, res, next) => {
     if (error.stack) {
       console.error(`[AUDIO-DEBUG]   Stack: ${error.stack}`);
     }
-    
+
     // Log file states on error
     if (req.file && req.file.path) {
       console.log(`[AUDIO-DEBUG] 📁 Error cleanup - checking uploaded file:`);
       debugFileExists(req.file.path, 'ERROR-UPLOADED-FILE');
-      
+
       // Check if we have a filteredAudioPath from pipeline
       if (req.filteredAudioPath) {
         console.log(`[AUDIO-DEBUG] 📁 Error cleanup - checking filtered file:`);
         debugFileExists(req.filteredAudioPath, 'ERROR-FILTERED-FILE');
       }
-      
+
       // Only delete uploaded file if it exists and error occurred early
       if (fs.existsSync(req.file.path)) {
         try {
@@ -798,11 +956,11 @@ router.post('/filter-and-transcribe', (req, res, next) => {
         }
       }
     }
-    
+
     const message = (error && error.message) ? String(error.message) : 'Error processing audio';
     if (!res.headersSent) {
       try {
-        res.status(500).json({ 
+        res.status(500).json({
           error: message,
           details: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
@@ -823,7 +981,7 @@ router.post('/filter-and-transcribe', (req, res, next) => {
 });
 
 // Append a new recording to an existing timeline
-router.post('/append/:timelineId', (req, res, next) => {
+router.post('/append/:timelineId', optionalAuth, (req, res, next) => {
   upload.single('audio')(req, res, (err) => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') {
@@ -835,11 +993,11 @@ router.post('/append/:timelineId', (req, res, next) => {
   });
 }, async (req, res) => {
   const appendStartTime = new Date().toISOString();
-  
+
   // Set connection headers early to prevent ECONNRESET
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('Keep-Alive', 'timeout=600');
-  
+
   // Set timeouts early to prevent connection issues
   try {
     req.setTimeout(600000);
@@ -847,7 +1005,7 @@ router.post('/append/:timelineId', (req, res, next) => {
   } catch (timeoutErr) {
     console.error(`[AUDIO-DEBUG] ⚠️ Failed to set timeout: ${timeoutErr.message}`);
   }
-  
+
   // Track if response has been sent to prevent double-sending
   let responseSent = false;
   const sendResponse = (statusCode, data) => {
@@ -862,12 +1020,12 @@ router.post('/append/:timelineId', (req, res, next) => {
       console.error(`[AUDIO-DEBUG] ⚠️ Headers already sent, cannot send response`);
     }
   };
-  
+
   try {
     const timelineId = parseInt(req.params.timelineId, 10);
     console.log(`[AUDIO-DEBUG] ➕ APPEND REQUEST START [${appendStartTime}]`);
     console.log(`[AUDIO-DEBUG]   Timeline ID: ${timelineId}`);
-    
+
     if (!Number.isFinite(timelineId)) {
       console.log(`[AUDIO-DEBUG] ❌ Invalid timeline ID: ${req.params.timelineId}`);
       sendResponse(400, { error: 'Invalid timeline id' });
@@ -883,9 +1041,9 @@ router.post('/append/:timelineId', (req, res, next) => {
     const inputFile = req.file.path;
     console.log(`[AUDIO-DEBUG] 📤 Append upload received:`);
     console.log(`[AUDIO-DEBUG]   Original name: ${req.file.originalname}`);
-    console.log(`[AUDIO-DEBUG]   Saved path: ${inputFile}`);
+    console.log(`[AUDIO-DEBUG]   Saved path (original audio): ${inputFile}`);
     console.log(`[AUDIO-DEBUG]   Size: ${req.file.size} bytes`);
-    
+
     // Verify uploaded file exists
     debugFileExists(inputFile, 'APPEND-UPLOAD-RECEIVED');
 
@@ -899,9 +1057,25 @@ router.post('/append/:timelineId', (req, res, next) => {
       return;
     }
 
-    const { segments, text: fullText, filteredAudioPath } = await runFilterAndTranscribePipeline(inputFile, pythonCmd);
-    const recordingStartTime = getRecordingStartTime(filteredAudioPath);
-    
+    const { segments, text: fullText, filteredAudioPath, originalAudioPath } = await runFilterAndTranscribePipeline(inputFile, pythonCmd);
+    const clientTime = req.body && req.body.recording_start_time;
+    // Prefer client-provided recording time and fall back to original audio file mtime
+    const recordingStartTime = resolveRecordingStartTime(originalAudioPath, clientTime);
+
+    // Log key metadata for debugging recording time coming from device/frontend vs file mtime (append)
+    try {
+      const fsStats = fs.existsSync(originalAudioPath) ? fs.statSync(originalAudioPath) : null;
+      console.log('[AUDIO-DEBUG] 🎧 Original audio metadata (append):', {
+        originalAudioPath,
+        sizeBytes: fsStats ? fsStats.size : null,
+        mtime: fsStats ? fsStats.mtime.toISOString() : null,
+        recordingTimeFromClientRaw: clientTime || null, // time provided by frontend based on device metadata
+        resolvedRecordingStartTime: recordingStartTime.toISOString() // final time used for timeline "Time" column
+      });
+    } catch (metaErr) {
+      console.log('[AUDIO-DEBUG] ⚠️ Failed to log original audio metadata (append):', metaErr.message);
+    }
+
     console.log(`[AUDIO-DEBUG] 📝 Append transcription complete:`);
     console.log(`[AUDIO-DEBUG]   Filtered audio path: ${filteredAudioPath}`);
     console.log(`[AUDIO-DEBUG]   Segments count: ${segments.length}`);
@@ -910,8 +1084,8 @@ router.post('/append/:timelineId', (req, res, next) => {
     if (mockData && typeof mockData.appendTranscriptionEvent === 'function') {
       try {
         console.log(`[AUDIO-DEBUG] 💾 Appending to mockData timeline ${timelineId}...`);
-        console.log(`[AUDIO-DEBUG]   Audio path to save: ${filteredAudioPath}`);
-        
+        console.log(`[AUDIO-DEBUG]   Original audio path to save: ${originalAudioPath}`);
+
         // Check if timeline exists before trying to append
         const existingTimeline = mockData.getTimeline(timelineId);
         if (!existingTimeline) {
@@ -921,15 +1095,15 @@ router.post('/append/:timelineId', (req, res, next) => {
           console.log(`[AUDIO-DEBUG]   2. mockData was cleared (in-memory storage)`);
           console.log(`[AUDIO-DEBUG]   3. Timeline was never created`);
           console.log(`[AUDIO-DEBUG]   Creating a new timeline instead...`);
-          
-          // Fallback: create a new timeline instead of failing
-          const newTimelineId = mockData.addTranscriptionTimeline(segments, filteredAudioPath, recordingStartTime);
+
+          // Fallback: create a new timeline instead of failing (use unfiltered/original audio for playback)
+          const newTimelineId = mockData.addTranscriptionTimeline(segments, originalAudioPath, recordingStartTime);
           const events = mockData.getEvents(newTimelineId);
           const timeline = mockData.getTimeline(newTimelineId);
-          
+
           console.log(`[AUDIO-DEBUG] ✅ Created new timeline ${newTimelineId} as fallback`);
           console.log(`[AUDIO-DEBUG]   💡 Tip: Configure nodemon.json to ignore uploads/ directory to prevent restarts`);
-          
+
           sendResponse(200, {
             message: 'Timeline not found, created new timeline (mock)',
             timelineId: newTimelineId,
@@ -940,15 +1114,15 @@ router.post('/append/:timelineId', (req, res, next) => {
           });
           return;
         }
-        
+
         // Verify file exists before saving reference
-        const existsBeforeAppend = debugFileExists(filteredAudioPath, 'BEFORE-APPEND-MOCK-SAVE');
+        const existsBeforeAppend = debugFileExists(originalAudioPath, 'BEFORE-APPEND-MOCK-SAVE');
         if (!existsBeforeAppend) {
           console.log(`[AUDIO-DEBUG] ⚠️⚠️⚠️ WARNING: Audio file missing before appending to mockData!`);
         }
-        
-        const events = mockData.appendTranscriptionEvent(timelineId, segments, filteredAudioPath, recordingStartTime);
-        
+
+        const events = mockData.appendTranscriptionEvent(timelineId, segments, originalAudioPath, recordingStartTime);
+
         // Verify audio paths in returned events
         console.log(`[AUDIO-DEBUG] ✅ Append complete, verifying audio paths:`);
         events.forEach((ev, idx) => {
@@ -956,7 +1130,7 @@ router.post('/append/:timelineId', (req, res, next) => {
             debugFileExists(ev.audio_file_path, `APPEND-EVENT-${ev.id}-AUDIO`);
           }
         });
-        
+
         sendResponse(200, {
           message: 'Recording added to timeline (mock)',
           timelineId,
@@ -967,7 +1141,7 @@ router.post('/append/:timelineId', (req, res, next) => {
       } catch (mockErr) {
         console.error(`[AUDIO-DEBUG] ❌ appendTranscriptionEvent failed:`, mockErr);
         console.error(`[AUDIO-DEBUG]   Stack: ${mockErr.stack}`);
-        
+
         // Ensure response is sent even if there's an error
         sendResponse(500, { error: mockErr.message || 'Failed to append event.' });
         return;
@@ -986,21 +1160,25 @@ router.post('/append/:timelineId', (req, res, next) => {
       return;
     }
 
+    if (timeline.user_id != null && !req.user) {
+      sendResponse(401, { error: 'Sign in required to modify this timeline' });
+      return;
+    }
     if (req.user && timeline.user_id !== req.user.id) {
       sendResponse(403, { error: 'Access denied' });
       return;
     }
 
     console.log(`[AUDIO-DEBUG] 💾 Appending to database timeline ${timelineId}...`);
-    console.log(`[AUDIO-DEBUG]   Audio path to save: ${filteredAudioPath}`);
-    
+    console.log(`[AUDIO-DEBUG]   Original audio path to save: ${originalAudioPath}`);
+
     // Verify file exists before saving to database
-    const existsBeforeDbAppend = debugFileExists(filteredAudioPath, 'BEFORE-APPEND-DB-SAVE');
+    const existsBeforeDbAppend = debugFileExists(originalAudioPath, 'BEFORE-APPEND-DB-SAVE');
     if (!existsBeforeDbAppend) {
       console.log(`[AUDIO-DEBUG] ⚠️⚠️⚠️ WARNING: Audio file missing before appending to database!`);
     }
-    
-    const [singleEvent] = eventsWithRecordedTime(segments, recordingStartTime, filteredAudioPath, fullText);
+
+    const [singleEvent] = eventsWithRecordedTime(segments, recordingStartTime, originalAudioPath, fullText);
     const existingEvents = await Event.findByTimelineId(timelineId);
     const nextEventNumber = existingEvents.length
       ? Math.max(...existingEvents.map((e) => e.event_number || 0)) + 1
@@ -1009,7 +1187,7 @@ router.post('/append/:timelineId', (req, res, next) => {
     console.log(`[AUDIO-DEBUG] 📋 Creating event in database:`);
     console.log(`[AUDIO-DEBUG]   Timeline ID: ${timelineId}`);
     console.log(`[AUDIO-DEBUG]   Event number: ${nextEventNumber}`);
-    console.log(`[AUDIO-DEBUG]   Audio path: ${singleEvent.audio_file_path}`);
+    console.log(`[AUDIO-DEBUG]   Audio path (unfiltered): ${singleEvent.audio_file_path}`);
 
     const createdEvent = await Event.create(timelineId, {
       eventNumber: nextEventNumber,
@@ -1017,14 +1195,14 @@ router.post('/append/:timelineId', (req, res, next) => {
       transcript: singleEvent.transcript,
       latitude: null,
       longitude: null,
-      audioFilePath: filteredAudioPath,
+      audioFilePath: originalAudioPath,
       audioDuration: singleEvent.audio_duration
     });
-    
+
     console.log(`[AUDIO-DEBUG] ✅ Event created in database:`);
     console.log(`[AUDIO-DEBUG]   Event ID: ${createdEvent.id}`);
     console.log(`[AUDIO-DEBUG]   Audio path stored: ${createdEvent.audioFilePath || createdEvent.audio_file_path || 'CHECK DB'}`);
-    
+
     // Verify file still exists after DB append
     debugFileExists(filteredAudioPath, 'AFTER-APPEND-DB-SAVE');
 
@@ -1043,15 +1221,15 @@ router.post('/append/:timelineId', (req, res, next) => {
     if (error.stack) {
       console.error(`[AUDIO-DEBUG]   Stack: ${error.stack}`);
     }
-    
+
     // Log file states on error
     if (req.file && req.file.path) {
       console.log(`[AUDIO-DEBUG] 📁 Append error cleanup - checking uploaded file:`);
       debugFileExists(req.file.path, 'APPEND-ERROR-UPLOADED-FILE');
     }
-    
+
     // Ensure response is sent even if there's an error
-    sendResponse(500, { 
+    sendResponse(500, {
       error: error.message || 'Failed to append recording',
       details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });

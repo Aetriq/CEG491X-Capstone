@@ -2,6 +2,7 @@ const { db } = require('../database/db');
 
 class Event {
   static async create(timelineId, eventData) {
+    console.log('[DB-DEBUG] Event.create', { timelineId, eventNumber: eventData?.eventNumber, time: eventData?.time });
     const { eventNumber, time, transcript, latitude, longitude, audioFilePath, audioDuration } = eventData;
 
     return new Promise((resolve, reject) => {
