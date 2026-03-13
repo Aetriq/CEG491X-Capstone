@@ -1,7 +1,7 @@
 /* CEG491X-Capstone/echolog-webapp/Backend/src/data/mockData.js*/
 // In-memory mock data storage for timelines and events
 // Used when database is not available or USE_MOCK_DATA=true
-// ⚠️ WARNING: This data is lost on server restart!
+// Data is lost on server restart – for persistence, use database.
 
 const initTimestamp = new Date().toISOString();
 console.log(`[MOCKDATA-DEBUG] 🔄 MOCKDATA INITIALIZED [${initTimestamp}]`);
@@ -12,6 +12,7 @@ let nextEventId = 1000;
 
 const timelines = {};
 const events = {};
+// Stores transcription‑generated timelines separately.
 const transcriptionTimelines = {};
 
 // Log initial state

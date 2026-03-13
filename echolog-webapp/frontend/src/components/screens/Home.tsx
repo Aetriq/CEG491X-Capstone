@@ -78,7 +78,7 @@ interface DownloadedFile {
 
 const Home: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, logout } = useAuth(); // NEW: get logout function
   const {
     isConnected,
     isScanning,
@@ -366,6 +366,12 @@ const Home: React.FC = () => {
     }
   };
 
+  // NEW: logout handler
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
   return (
     <div className="home-shell">
       <div className="floating-bg">
@@ -380,9 +386,10 @@ const Home: React.FC = () => {
         <div className="menu-item active">Home</div>
         <div className="menu-item" onClick={() => navigate('/timeline/1')}>Event Log →</div>
         <div className="menu-item" onClick={() => navigate('/login')}>Login / Register →</div>
-        <div className="user-panel">
+         <div className="user-panel">
           <div className="avatar-circle">👤</div>
           <div className="username">{user?.username || 'guest'}</div>
+          <button className="logout-button" onClick={handleLogout}>Logout</button>
         </div>
       </div>
 

@@ -188,6 +188,7 @@
 .input-group {
   position: relative;
   margin-bottom: 25px;
+  width: 100%; /* Ensure it takes full width */
 }
 
 .input-icon {
@@ -206,6 +207,7 @@
   font-size: 16px;
   transition: all 0.3s;
   background: white;
+  box-sizing: border-box; /* NEW: prevent padding from overflowing */
   position: relative;
 }
 
@@ -231,6 +233,13 @@
 
 .password-toggle:hover {
   opacity: 1;
+}
+
+.password-strength.register-strength {
+  margin-top: 5px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .form-options {

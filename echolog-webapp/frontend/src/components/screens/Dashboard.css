@@ -303,6 +303,46 @@
   animation: float 20s infinite linear;
 }
 
+.menu-toggle {
+  display: none;
+  position: fixed;
+  top: 15px;
+  left: 15px;
+  z-index: 1000;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 5px;
+  padding: 10px 15px;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .menu-toggle {
+    display: block;
+  }
+  
+  .dashboard-sidebar {
+    position: fixed;
+    left: -100%;
+    top: 0;
+    bottom: 0;
+    width: 250px;
+    transition: left 0.3s ease;
+    z-index: 999;
+  }
+  
+  .dashboard-sidebar.open {
+    left: 0;
+  }
+  
+  .dashboard-main {
+    padding-left: 0;
+    width: 100%;
+  }
+}
+
 @keyframes float {
   0% {
     transform: translateY(0) translateX(0) rotate(0deg);

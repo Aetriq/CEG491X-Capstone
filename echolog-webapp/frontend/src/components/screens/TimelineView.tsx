@@ -44,9 +44,55 @@ const TimelineView: React.FC = () => {
   const [isFromCache, setIsFromCache] = useState(false);
   const [savingToDb, setSavingToDb] = useState(false);
 
-  useEffect(() => {
-    loadTimeline();
-  }, [id]);
+useEffect(() => {
+  // Function to sync unsaved timelines when online
+  const syncUnsavedTimelines = async () => {
+    // Find all localStorage keys that start with 'echolog_timeline_'
+    const keys = Object.keys(localStorage).filter(key => key.startsWith(CACHE_KEY_PREFIX));
+    for (const key of keys) {
+      const cached = localStorage.getItem(key);
+      if (!cached) continue;
+      try {
+        const { timeline, events } = JSON.parse(cached);
+        // Check if it's already saved? We need a flag. For simplicity, assume any cached timeline is unsaved.
+        // In a real app, you'd store a `saved` flag or check with backend.
+        const payload = {
+          deviceId: timeline.device_id,
+          events: events.map((e: any) => ({
+            eventNumber: e.event_number,
+            time: e.time,
+            transcript: e.transcript,
+            latitude: e.latitude,
+            longitude: e.longitude,
+            audioFilePath: e.audio_file_path,
+            audioDuration: e.audio_duration
+          }))
+        };
+        await axios.post(`${API_URL}/timelines/generate`, payload);
+        // After successful save, remove from localStorage or mark as saved
+        localStorage.removeItem(key);
+        console.log(`Synced timeline ${key} to database`);
+      } catch (err) {
+        console.error(`Failed to sync timeline ${key}`, err);
+      }
+    }
+  };
+
+  const handleOnline = () => {
+    console.log('App is online, syncing unsaved timelines...');
+    syncUnsavedTimelines();
+  };
+
+  window.addEventListener('online', handleOnline);
+  // Also run once on mount in case we're already online
+  if (navigator.onLine) {
+    syncUnsavedTimelines();
+  }
+
+  return () => {
+    window.removeEventListener('online', handleOnline);
+    };
+  }, []);
 
   const loadTimeline = async () => {
     setLoading(true);

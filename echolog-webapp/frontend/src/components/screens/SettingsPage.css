@@ -165,3 +165,39 @@
 .btn-danger:hover {
   background: #c82333;
 }
+
+.message {
+  margin: 20px 0;
+  padding: 10px;
+  border-radius: 5px;
+  background: #d4edda;
+  color: #155724;
+  text-align: center;
+}
+
+.password-strength {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.strength-bar {
+  flex: 1;
+  height: 8px;
+  background: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.strength-fill {
+  height: 100%;
+  transition: width 0.3s, background-color 0.3s;
+}
+
+.strength-label {
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 60px;
+  color: var(--text-secondary);
+}

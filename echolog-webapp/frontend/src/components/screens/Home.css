@@ -439,6 +439,22 @@ select {
   color: #607d8b;
 }
 
+.logout-button {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 5px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-top: 10px;
+  transition: background 0.2s;
+  width: 100%;
+}
+
+.logout-button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 @media (max-width: 1100px) {
   .top-row {
     grid-template-columns: 1fr;

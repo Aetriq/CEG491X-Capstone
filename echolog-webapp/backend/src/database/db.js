@@ -1,7 +1,9 @@
-// CEG491X-Capstone/echolog-webapp/`backend/src/database/db.js
+// CEG491X-Capstone/echolog-webapp/backend/src/database/db.js
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
+// ADDED: import bcrypt for password hashing (used in seeding)
+const bcrypt = require('bcryptjs');
 
 const dbPath = path.join(__dirname, 'echolog.db');
 
@@ -21,62 +23,87 @@ const db = new sqlite3.Database(dbPath, (err) => {
 });
 
 function initializeDatabase() {
-  db.run(`CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
+  // Run table creation in series to ensure tables exist before seeding
+  db.serialize(() => {
+    db.run(`CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS sign_in_attempts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    username TEXT,
-    success INTEGER DEFAULT 0,
-    ip_address TEXT,
-    user_agent TEXT,
-    attempted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  )`);
+    db.run(`CREATE TABLE IF NOT EXISTS sign_in_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      username TEXT,
+      success INTEGER DEFAULT 0,
+      ip_address TEXT,
+      user_agent TEXT,
+      attempted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS timelines (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    device_id TEXT,
-    date_generated DATETIME DEFAULT CURRENT_TIMESTAMP,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  )`);
+    db.run(`CREATE TABLE IF NOT EXISTS timelines (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      device_id TEXT,
+      date_generated DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timeline_id INTEGER NOT NULL,
-    event_number INTEGER NOT NULL,
-    time TEXT NOT NULL,
-    transcript TEXT,
-    latitude REAL,
-    longitude REAL,
-    audio_file_path TEXT,
-    audio_duration INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (timeline_id) REFERENCES timelines(id) ON DELETE CASCADE
-  )`);
+    db.run(`CREATE TABLE IF NOT EXISTS events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timeline_id INTEGER NOT NULL,
+      event_number INTEGER NOT NULL,
+      time TEXT NOT NULL,
+      transcript TEXT,
+      latitude REAL,
+      longitude REAL,
+      audio_file_path TEXT,
+      audio_duration INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (timeline_id) REFERENCES timelines(id) ON DELETE CASCADE
+    )`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS audio_recordings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_id INTEGER NOT NULL,
-    file_path TEXT NOT NULL,
-    file_size INTEGER,
-    duration INTEGER,
-    mime_type TEXT,
-    uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
-  )`);
+    db.run(`CREATE TABLE IF NOT EXISTS audio_recordings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id INTEGER NOT NULL,
+      file_path TEXT NOT NULL,
+      file_size INTEGER,
+      duration INTEGER,
+      mime_type TEXT,
+      uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+    )`);
 
-  console.log('Database tables initialized');
+    console.log('Database tables initialized');
+
+    // MODIFIED: Seed default admin user inside serialize to ensure tables exist
+    db.get("SELECT * FROM users WHERE username = 'admin'", (err, row) => {
+      if (err) {
+        console.error('Error checking for admin user:', err);
+        return;
+      }
+      if (!row) {
+        // Hash the password 'admin' with bcrypt (10 rounds)
+        const passwordHash = bcrypt.hashSync('admin', 10);
+        db.run(
+          `INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)`,
+          ['admin', 'admin@echolog.local', passwordHash],
+          function(err) {
+            if (err) console.error('Failed to create admin user:', err);
+            else console.log('✅ Default admin user created (admin/admin)');
+          }
+        );
+      } else {
+        console.log('ℹ️ Admin user already exists');
+      }
+    });
+  });
 }
 
 function closeDatabase() {

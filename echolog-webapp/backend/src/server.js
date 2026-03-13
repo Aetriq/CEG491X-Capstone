@@ -1,11 +1,11 @@
 // backend/src/server.js
-// UPDATED: Added Swagger UI, config usage, and job queue integration
+// Added Swagger UI, config usage, and job queue integration
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
 
-// NEW: Import config
+// Import config
 const config = require('./config');
 
 // Friend's routes

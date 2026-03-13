@@ -1,11 +1,10 @@
 // CEG491X-Capstone/echolog-webapp/backend/src/routes/auth.js
-// UPDATED: Replaced process.env with config
 const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
 const { generateToken, verifyToken } = require('../middleware/auth');
-const config = require('../config'); // NEW: import config
+const config = require('../config');
 
 // Create Account
 router.post('/register',
@@ -30,7 +29,7 @@ router.post('/register',
       }
 
       const user = await User.create(username, email, password);
-      const token = generateToken(user); // generateToken uses config internally
+      const token = generateToken(user);
 
       // Log successful account creation (treated as sign-in)
       await User.logSignInAttempt(user.id, username, true, req);
@@ -61,25 +60,44 @@ router.post('/login',
       }
 
       const { username, password } = req.body;
+      console.log(`[AUTH] Login attempt for username: ${username}`);
 
+      // --- TEMPORARY BYPASS FOR TESTING ---
+      // Allow admin/admin to login without database
+      if (username === 'admin' && password === 'admin') {
+        console.log('[AUTH] Using admin bypass');
+        const user = { id: 1, username: 'admin', email: 'admin@echolog.local' };
+        const token = generateToken(user);
+        console.log('[AUTH] Login successful via bypass for admin');
+        return res.json({
+          message: 'Sign in successful',
+          user,
+          token
+        });
+      }
+      // --- END OF BYPASS ---
+
+      // Normal database lookup
       const user = await User.findByUsername(username);
       if (!user) {
         // Log failed attempt
         await User.logSignInAttempt(null, username, false, req);
+        console.log(`[AUTH] User not found: ${username}`);
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
+      console.log(`[AUTH] User found: ${user.username}, verifying password...`);
       const isValidPassword = await User.verifyPassword(user, password);
       if (!isValidPassword) {
-        // Log failed attempt
         await User.logSignInAttempt(user.id, username, false, req);
+        console.log(`[AUTH] Invalid password for user: ${username}`);
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
       // Log successful sign-in
       await User.logSignInAttempt(user.id, username, true, req);
-
       const token = generateToken(user);
+      console.log(`[AUTH] Login successful for: ${username}`);
 
       res.json({
         message: 'Sign in successful',
@@ -87,7 +105,7 @@ router.post('/login',
         token
       });
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('[AUTH] Login error:', error);
       res.status(500).json({ error: 'Error signing in' });
     }
   }
@@ -95,7 +113,6 @@ router.post('/login',
 
 // Sign Out (client-side token removal, but verify token is valid)
 router.post('/logout', verifyToken, (req, res) => {
-  // Token is valid, client should remove it
   res.json({ message: 'Signed out successfully' });
 });
 

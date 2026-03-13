@@ -1,5 +1,7 @@
 // echolog-webapp/frontend/src/contexts/AuthContext.tsx
-// UPDATED: Uses localStorage for token, matches your existing login flow
+// Provides authentication state (user, loading) and methods (login, register, logout) to the entire app.
+// Uses localStorage to persist JWT token across page reloads.
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 
@@ -25,6 +27,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // On mount: check for existing token and verify with backend
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
@@ -36,6 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Verify token with backend and set user if valid
   const verifyToken = async (token: string) => {
     try {
       const response = await axios.get(`${API_URL}/auth/verify`);
@@ -48,6 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Login: send credentials, receive token, store in localStorage, set user
   const login = async (username: string, password: string) => {
     try {
       const response = await axios.post(`${API_URL}/auth/login`, { username, password });
@@ -61,6 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Register: create new account, then auto‑login (returns token and user)
   const register = async (username: string, email: string, password: string) => {
     try {
       const response = await axios.post(`${API_URL}/auth/register`, { username, email, password });
@@ -74,6 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Logout: clear token and user
   const logout = () => {
     localStorage.removeItem('token');
     delete axios.defaults.headers.common['Authorization'];

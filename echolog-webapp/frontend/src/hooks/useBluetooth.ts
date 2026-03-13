@@ -1,9 +1,17 @@
-// frontend/src/hooks/useBluetooth.ts
-// UPDATED: Moved import to top to fix ESLint import/first error
-import { useState, useCallback, useEffect, useRef } from 'react';
+// CEG491X-Capstone/echolog-webapp/frontend/src/hooks/useBluetooth.ts
+// Custom hook for managing Web Bluetooth connection to EchoLog devices.
+// Provides scanning, connection, file upload/download, and command sending.
+// Uses UUIDs from ../constants/bluetooth.ts.
 
-// UPDATED: Added Web Bluetooth API type declarations to fix TypeScript errors
-// These types are not included in the standard TypeScript DOM lib, so we declare them here
+import { useState, useCallback, useEffect, useRef } from 'react';
+import {
+  ECHOLOG_SERVICE_UUID,
+  COMMAND_CHARACTERISTIC_UUID,
+  DATA_CHARACTERISTIC_UUID,
+  UPLOAD_CHARACTERISTIC_UUID,
+  BluetoothDevice,
+  FileTransferProgress
+} from '../constants/bluetooth';
 
 // Web Bluetooth API Type Declarations
 declare global {
@@ -53,31 +61,6 @@ declare global {
   type BluetoothCharacteristicUUID = string | number;
 }
 
-// UPDATED: Added 'uploading' and 'downloading' to FileTransferProgress status type
-
-// Bluetooth UUIDs for EchoLog device
-const ECHOLOG_SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
-const COMMAND_CHARACTERISTIC_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
-const DATA_CHARACTERISTIC_UUID = '829a287c-03c4-4c22-9442-70b9687c703b';
-const UPLOAD_CHARACTERISTIC_UUID = 'ce2e1b12-5883-4903-8120-001004b3410f';
-
-interface BluetoothDevice {
-  id: string;
-  name: string;
-  gatt?: BluetoothRemoteGATTServer;
-}
-
-// UPDATED: Added 'uploading' and 'downloading' to status type
-interface FileTransferProgress {
-  isTransferring: boolean;
-  progress: number;
-  totalBytes: number;
-  transferredBytes: number;
-  speed: number;
-  filename?: string;
-  status: 'idle' | 'connecting' | 'transferring' | 'uploading' | 'downloading' | 'completed' | 'error';
-}
-
 interface UseBluetoothReturn {
   device: BluetoothDevice | null;
   isConnected: boolean;
@@ -121,7 +104,11 @@ export const useBluetooth = (): UseBluetoothReturn => {
   // Check if Web Bluetooth is supported
   const isBluetoothSupported = typeof navigator !== 'undefined' && 'bluetooth' in navigator;
 
-  // Scan for available Bluetooth devices
+  /**
+   * Scan for nearby Bluetooth devices that advertise the EchoLog service.
+   * Updates availableDevices state.
+   * @returns Promise<BluetoothDevice[]> – array of discovered devices.
+   */  
   const scanForDevices = useCallback(async (): Promise<BluetoothDevice[]> => {
     if (!isBluetoothSupported) {
       setError('Web Bluetooth is not supported in your browser. Please use Chrome, Edge, or Opera.');
@@ -166,7 +153,11 @@ export const useBluetooth = (): UseBluetoothReturn => {
     }
   }, [isBluetoothSupported]);
 
-  // Connect to a specific device
+  /**
+   * Connect to a specific device by its ID.
+   * @param deviceId – the device's unique ID (from availableDevices)
+   * @returns Promise<boolean> – true if connection succeeded.
+   */
   const connectToDevice = useCallback(async (deviceId: string): Promise<boolean> => {
     if (!isBluetoothSupported) {
       setError('Web Bluetooth not supported');
@@ -296,7 +287,7 @@ export const useBluetooth = (): UseBluetoothReturn => {
     });
   }, []);
 
-  // Disconnect from device
+  // Disconnect from the currently connected device and clean up.
   const disconnectDevice = useCallback(async () => {
     if (device?.gatt?.connected) {
       device.gatt.disconnect();
@@ -304,7 +295,11 @@ export const useBluetooth = (): UseBluetoothReturn => {
     handleDisconnect();
   }, [device, handleDisconnect]);
 
-  // Send command to device
+  /**
+   * Send a text command to the device via the command characteristic.
+   * @param command – e.g., "GET_STATUS", "LIST_FILES"
+   * @returns Promise<string> – response from device (or success message).
+   */
   const sendCommand = useCallback(async (command: string): Promise<string> => {
     if (!isConnected || !commandCharacteristicRef.current) {
       throw new Error('Not connected to device');
@@ -321,7 +316,12 @@ export const useBluetooth = (): UseBluetoothReturn => {
     }
   }, [isConnected]);
 
-  // Upload file to device
+  /**
+   * Upload a file to the device in chunks.
+   * Tracks progress via fileTransferProgress state.
+   * @param file – File object from input.
+   * @returns Promise<{ success: boolean; bytesTransferred: number }>
+   */
   const uploadFile = useCallback(async (file: File): Promise<{ success: boolean; bytesTransferred: number }> => {
     if (!isConnected || !uploadCharacteristicRef.current) {
       throw new Error('Not connected to device');
@@ -392,7 +392,11 @@ export const useBluetooth = (): UseBluetoothReturn => {
     }
   }, [isConnected, sendCommand]);
 
-  // Download file from device
+  /**
+   * Download a file from the device.
+   * @param filename – name of the file on the device.
+   * @returns Promise<Blob> – the file data.
+   */
   const downloadFile = useCallback(async (filename: string): Promise<Blob> => {
     if (!isConnected) {
       throw new Error('Not connected to device');

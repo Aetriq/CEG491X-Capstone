@@ -1,5 +1,8 @@
 // CEG491X-Capstone/echolog-webapp/backend/src/routes/audio.js
-// UPDATED: Replaced process.env with config
+// Routes for handling audio upload, filtering, transcription, and playback.
+// Supports both mockData (in‑memory) and SQLite database (via models).
+// Includes debugging helpers for file existence tracking.
+
 const express = require('express');
 const router = express.Router();
 const path = require('path');
@@ -92,6 +95,7 @@ async function getPythonCommand() {
  * @param {string} [model] - Whisper model (default from config.whisperModel)
  * @returns {{ segments: Array<{start, end, text}>, text: string, language: string, filteredAudioPath: string }}
  */
+
 async function runFilterAndTranscribePipeline(inputPath, pythonCmd, model) {
   const filterScript = path.join(__dirname, '../../scripts/filter_audio.py');
   const transcribeScript = path.join(__dirname, '../../scripts/transcribe_audio.py');

@@ -1,5 +1,5 @@
 // frontend/src/components/screens/Dashboard.tsx
-// UPDATED: Added particle effects to Dashboard with useState and useEffect
+// UPDATED: Added responsive hamburger menu
 import React, { useState, useEffect } from 'react';
 import './Dashboard.css';
 
@@ -23,13 +23,11 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ onLogout, user }) => {
-  // UPDATED: Added particle state for background effects
   const [particles, setParticles] = useState<Array<{x: number, y: number, size: number}>>([]);
   const [activePage, setActivePage] = useState('menu');
+  const [sidebarOpen, setSidebarOpen] = useState(false); // NEW: state for mobile sidebar
 
-  // UPDATED: Added useEffect to initialize particles
   useEffect(() => {
-    // Create particles for background effect
     const particlesArray = [];
     for (let i = 0; i < 30; i++) {
       particlesArray.push({
@@ -56,26 +54,24 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, user }) => {
     }
   };
 
+  // NEW: Close sidebar when navigating (for mobile)
+  const handleNavigate = (page: string) => {
+    setActivePage(page);
+    setSidebarOpen(false);
+  };
+
   return (
     <div className="dashboard-container">
-      {/* UPDATED: Added dashboard background with particles */}
-      <div className="dashboard-background">
-        {particles.map((particle, index) => (
-          <div
-            key={index}
-            className="dashboard-particle"
-            style={{
-              left: `${particle.x}%`,
-              top: `${particle.y}%`,
-              width: particle.size,
-              height: particle.size,
-              animationDelay: `${index * 0.1}s`
-            }}
-          />
-        ))}
-      </div>
-      
-      <div className="dashboard-sidebar">
+      {/* NEW: Hamburger button for mobile */}
+      <button 
+        className="menu-toggle" 
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        aria-label="Toggle menu"
+      >
+        ☰
+      </button>
+
+      <div className={`dashboard-sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <div className="sidebar-logo">EchoLog</div>
           <p className="sidebar-subtitle">Professional Audio Logging</p>
@@ -94,7 +90,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, user }) => {
         <div className="sidebar-nav">
           <button 
             className={`nav-item ${activePage === 'menu' ? 'active' : ''}`}
-            onClick={() => setActivePage('menu')}
+            onClick={() => handleNavigate('menu')}
           >
             <span className="nav-icon">🏠</span>
             <span className="nav-text">Main Menu</span>
@@ -102,7 +98,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, user }) => {
           
           <button 
             className={`nav-item ${activePage === 'device-connect' ? 'active' : ''}`}
-            onClick={() => setActivePage('device-connect')}
+            onClick={() => handleNavigate('device-connect')}
           >
             <span className="nav-icon">🔗</span>
             <span className="nav-text">Device Connect</span>
@@ -110,7 +106,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, user }) => {
           
           <button 
             className={`nav-item ${activePage === 'events' ? 'active' : ''}`}
-            onClick={() => setActivePage('events')}
+            onClick={() => handleNavigate('events')}
           >
             <span className="nav-icon">📊</span>
             <span className="nav-text">Event Log</span>
@@ -118,7 +114,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, user }) => {
           
           <button 
             className={`nav-item ${activePage === 'settings' ? 'active' : ''}`}
-            onClick={() => setActivePage('settings')}
+            onClick={() => handleNavigate('settings')}
           >
             <span className="nav-icon">⚙️</span>
             <span className="nav-text">Settings</span>
@@ -126,7 +122,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onLogout, user }) => {
           
           <button 
             className={`nav-item ${activePage === 'account' ? 'active' : ''}`}
-            onClick={() => setActivePage('account')}
+            onClick={() => handleNavigate('account')}
           >
             <span className="nav-icon">👤</span>
             <span className="nav-text">Account</span>
