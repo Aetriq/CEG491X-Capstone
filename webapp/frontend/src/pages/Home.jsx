@@ -1,11 +1,19 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import './Home.css';
+// Attach JWT so transcribe/append persist to DB for logged-in users
+function authHeaders() {
+  const t = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
+
+
 
 // Global transcription queue so multiple audio files are processed sequentially
 let transcriptionQueue = Promise.resolve(null);
 
-async function transcribeAudioQueued(audioFile, filename) {
+async function transcribeAudioQueued(audioFile, filename, recordingStartTimeISO) {
   transcriptionQueue = transcriptionQueue.then(async () => {
     try {
       // Quick health check before making the request
@@ -39,9 +47,14 @@ async function transcribeAudioQueued(audioFile, filename) {
       } else {
         formData.append('audio', audioFile);
       }
+      // Local card: pass file metadata time so timeline shows correct recording time
+      if (recordingStartTimeISO) {
+        formData.append('recording_start_time', recordingStartTimeISO);
+      }
 
       const response = await fetch('/api/audio/filter-and-transcribe', {
         method: 'POST',
+        headers: authHeaders(),
         body: formData
       });
 
@@ -70,7 +83,7 @@ async function transcribeAudioQueued(audioFile, filename) {
   return transcriptionQueue;
 }
 
-async function appendAudioQueued(timelineId, audioFile, filename) {
+async function appendAudioQueued(timelineId, audioFile, filename, recordingStartTimeISO) {
   transcriptionQueue = transcriptionQueue.then(async () => {
     try {
       // Quick health check before making the request
@@ -104,6 +117,10 @@ async function appendAudioQueued(timelineId, audioFile, filename) {
       } else {
         formData.append('audio', audioFile);
       }
+      // Local card: pass file metadata time so timeline shows correct recording time
+      if (recordingStartTimeISO) {
+        formData.append('recording_start_time', recordingStartTimeISO);
+      }
 
       let response;
       try {
@@ -113,6 +130,7 @@ async function appendAudioQueued(timelineId, audioFile, filename) {
         
         response = await fetch(`/api/audio/append/${timelineId}`, {
           method: 'POST',
+          headers: authHeaders(),
           body: formData,
           signal: controller.signal
         });
@@ -175,6 +193,7 @@ async function appendAudioQueued(timelineId, audioFile, filename) {
 
 function Home() {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [bleConnectionStatus, setBleConnectionStatus] = useState('Disconnected (Bluetooth)');
   const [bleDeviceName, setBleDeviceName] = useState('Not Connected');
   const [localUploadFiles, setLocalUploadFiles] = useState([]);
@@ -243,7 +262,8 @@ function Home() {
           
           if (shouldCreateNewTimeline) {
             // Create new timeline (first file or fallback after failure)
-            result = await transcribeAudioQueued(file, file.name);
+            // Don't send recording_start_time for Local Upload - let backend use WAV header
+            result = await transcribeAudioQueued(file, file.name, undefined);
             timelineId = result.timelineId || 1;
             allEvents = result.events || [];
             
@@ -252,7 +272,8 @@ function Home() {
             }
           } else {
             // Append to existing timeline
-            result = await appendAudioQueued(timelineId, file, file.name);
+            // Don't send recording_start_time for Local Upload - let backend use WAV header
+            result = await appendAudioQueued(timelineId, file, file.name, undefined);
             // Append returns updated events array
             allEvents = result.events || allEvents;
           }
@@ -349,6 +370,9 @@ function Home() {
 
     let downloadTotalSize = 0;
     let downloadBytesReceived = 0;
+    // Queue for multi-file downloads from the Download card
+    let downloadQueue = [];
+    let currentDownloadIndex = -1;
     let lastDownloadedBlob = null;
     let lastDownloadedFilename = null;
 
@@ -361,10 +385,14 @@ function Home() {
     const btnDisconnect = document.getElementById('btnDisconnect');
     const btnRefresh = document.getElementById('btnRefresh');
     const btnDownload = document.getElementById('btnDownload');
+    const btnDelete = document.getElementById('btnDelete');
     const btnStartUpload = document.getElementById('btnStartUpload');
     const btnStopUpload = document.getElementById('btnStopUpload');
     const fileInput = document.getElementById('fileInput');
     const btnTranscribe = document.getElementById('btnTranscribe');
+    const btnSaveConfig = document.getElementById('btnSaveConfig');
+    const btnDefaultConfig = document.getElementById('btnDefaultConfig');
+    const btnSyncTime = document.getElementById('btnSyncTime');
 
     if (
       !connStatus ||
@@ -376,10 +404,14 @@ function Home() {
       !btnDisconnect ||
       !btnRefresh ||
       !btnDownload ||
+      !btnDelete ||
       !btnStartUpload ||
       !btnStopUpload ||
       !fileInput ||
-      !btnTranscribe
+      !btnTranscribe ||
+      !btnSaveConfig ||
+      !btnDefaultConfig ||
+      !btnSyncTime
     ) {
       return;
     }
@@ -418,8 +450,12 @@ function Home() {
       btnDisconnect.style.display = 'inline-block';
 
       btnDownload.disabled = false;
+      btnDelete.disabled = false;
       btnStartUpload.disabled = false;
       btnRefresh.disabled = false;
+      btnSaveConfig.disabled = false;
+      btnDefaultConfig.disabled = false;
+      btnSyncTime.disabled = false;
 
       refreshFileList();
     }
@@ -439,7 +475,11 @@ function Home() {
 
       btnRefresh.disabled = true;
       btnDownload.disabled = true;
+      btnDelete.disabled = true;
       btnStartUpload.disabled = true;
+      btnSaveConfig.disabled = true;
+      btnDefaultConfig.disabled = true;
+      btnSyncTime.disabled = true;
 
       fileSelect.innerHTML = '<option>Disconnected</option>';
       
@@ -456,24 +496,36 @@ function Home() {
       if (!isDownloading) return;
       const blob = new Blob(fileBuffer, { type: 'application/octet-stream' });
       const filename = fileSelect.value || 'download.bin';
+
+      // Use recording time metadata parsed earlier from the device (time saved on recorder, not download time)
+      let recordingStartTime = null;
+      const selectedOpt = fileSelect.options[fileSelect.selectedIndex];
+      if (selectedOpt && selectedOpt.dataset && selectedOpt.dataset.recordingTime) {
+        recordingStartTime = selectedOpt.dataset.recordingTime;
+      }
       
       // Add to downloaded files array (using ref since we're inside useEffect)
-      downloadedFilesRef.current = [...downloadedFilesRef.current, { 
+      const entry = { 
         blob, 
         filename, 
-        downloadedAt: new Date().toISOString() 
-      }];
+        downloadedAt: new Date().toISOString(),
+        recordingStartTime
+      };
+      downloadedFilesRef.current = [...downloadedFilesRef.current, entry];
+
+      // Log stored metadata so you can inspect it in browser dev tools
+      try {
+        console.log('[DOWNLOAD-DEBUG] Stored downloaded audio file:', entry);
+        console.log('[DOWNLOAD-DEBUG] All downloaded audio files:', downloadedFilesRef.current);
+      } catch {
+        // ignore logging errors
+      }
       
       // Keep for backward compatibility (single file mode)
       lastDownloadedBlob = blob;
       lastDownloadedFilename = filename;
       
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      // Do NOT trigger a browser download; keep file only in web app memory
       isDownloading = false;
       
       // Update status to show downloaded files count
@@ -497,6 +549,30 @@ function Home() {
         dlStatus.innerText = 'Download Complete!';
         setDownloadStatus('Download Complete!');
         btnTranscribe.style.display = 'none';
+      }
+
+      // If we have a multi-file download queue, continue with the next file
+      if (downloadQueue.length > 0 && currentDownloadIndex >= 0) {
+        currentDownloadIndex += 1;
+        if (currentDownloadIndex < downloadQueue.length) {
+          const nextOpt = downloadQueue[currentDownloadIndex];
+          fileSelect.value = nextOpt.value;
+          const size = parseInt(nextOpt.dataset.size || '0', 10);
+          downloadTotalSize = Number.isNaN(size) ? 0 : size;
+          downloadBytesReceived = 0;
+          fileBuffer = [];
+          isDownloading = true;
+          startTime = Date.now();
+          const remaining = downloadQueue.length - currentDownloadIndex;
+          dlStatus.innerText = remaining > 1
+            ? `Requesting ${nextOpt.value} (${currentDownloadIndex + 1}/${downloadQueue.length})…`
+            : `Requesting ${nextOpt.value}…`;
+          sendCommand(`get ${nextOpt.value}`);
+        } else {
+          // Finished whole queue
+          downloadQueue = [];
+          currentDownloadIndex = -1;
+        }
       }
     }
 
@@ -563,12 +639,54 @@ function Home() {
         const str = decoder.decode(value);
         if (str.includes('|')) {
           const parts = str.split('|');
-          const exists = Array.from(fileSelect.options).some((opt) => opt.value === parts[0]);
+          const [name, sizeStr, recordedMeta] = parts;
+
+          // Attempt to interpret recording metadata (time saved on device) before any download
+          let recordingTimeIso = null;
+          if (recordedMeta) {
+            const numeric = Number(recordedMeta);
+            if (!Number.isNaN(numeric) && numeric > 0) {
+              const ms = numeric < 1e11 ? numeric * 1000 : numeric;
+              const d = new Date(ms);
+              if (!Number.isNaN(d.getTime())) {
+                recordingTimeIso = d.toISOString();
+              }
+            } else {
+              const d = new Date(recordedMeta);
+              if (!Number.isNaN(d.getTime())) {
+                recordingTimeIso = d.toISOString();
+              }
+            }
+          }
+
+          // Log device metadata so you can confirm recording time (pre-download)
+          try {
+            console.log('[BLE-DEBUG] Device file metadata (pre-download):', {
+              raw: str,
+              name,
+              sizeBytes: parseInt(sizeStr, 10),
+              recordingMetaRaw: recordedMeta ?? null,
+              recordingTimeIsoFromDevice: recordingTimeIso
+            });
+          } catch {
+            // ignore logging errors
+          }
+
+          const exists = Array.from(fileSelect.options).some((opt) => opt.value === name);
           if (!exists) {
             const opt = document.createElement('option');
-            opt.value = parts[0];
-            opt.text = `${parts[0]} (${formatBytes(parseInt(parts[1], 10))})`;
-            opt.dataset.size = parts[1];
+            opt.value = name;
+            opt.text = `${name} (${formatBytes(parseInt(sizeStr, 10))})`;
+            opt.dataset.size = sizeStr;
+
+            // Store both raw and parsed recording time metadata on the option
+            if (recordedMeta) {
+              opt.dataset.recordingTimeRaw = recordedMeta;
+            }
+            if (recordingTimeIso) {
+              opt.dataset.recordingTime = recordingTimeIso;
+            }
+
             fileSelect.appendChild(opt);
           }
           if (fileSelect.options[0] && fileSelect.options[0].text.includes('Scanning')) {
@@ -622,16 +740,76 @@ function Home() {
 
     const onRefreshClick = () => refreshFileList();
 
+    const onDeleteClick = async () => {
+      const selectedOptions = Array.from(fileSelect.options).filter((opt) => opt.selected && !opt.text.includes('Scanning') && !opt.text.includes('Disconnected'));
+      if (selectedOptions.length === 0) {
+        dlStatus.innerText = 'Please select file(s) to delete';
+        setDownloadStatus('Please select file(s) to delete');
+        return;
+      }
+
+      if (!confirm(`Delete ${selectedOptions.length} file(s)? This cannot be undone.`)) {
+        return;
+      }
+
+      dlStatus.innerText = `Deleting ${selectedOptions.length} file(s)...`;
+      setDownloadStatus(`Deleting ${selectedOptions.length} file(s)...`);
+      try {
+        console.log('[BLE-DEBUG] Delete requested for files:', selectedOptions.map(o => o.value));
+      } catch {
+        // ignore
+      }
+
+      for (const opt of selectedOptions) {
+        const filename = opt.value;
+        try {
+          console.log('[BLE-DEBUG] Sending delete command for:', filename);
+          await sendCommand(`del ${filename}`);
+          await new Promise(resolve => setTimeout(resolve, 200)); // Small delay between deletions
+        } catch (error) {
+          console.error(`Error deleting ${filename}:`, error);
+        }
+      }
+
+      setTimeout(() => {
+        refreshFileList();
+        dlStatus.innerText = `Deleted ${selectedOptions.length} file(s)`;
+        setDownloadStatus(`Deleted ${selectedOptions.length} file(s)`);
+        try {
+          console.log('[BLE-DEBUG] Delete completed for files:', selectedOptions.map(o => o.value));
+        } catch {
+          // ignore
+        }
+      }, 500);
+    };
+
     const onDownloadClick = () => {
-      const filename = fileSelect.value;
+      // Gather all selected options (multi-select)
+      const selectedOptions = Array.from(fileSelect.options).filter((opt) => opt.selected && !opt.text.includes('Scanning'));
+      if (selectedOptions.length === 0) {
+        const filename = fileSelect.value;
+        if (!filename || filename.includes('Scanning')) return;
+        selectedOptions.push(fileSelect.options[fileSelect.selectedIndex]);
+      }
+
+      // Initialize queue with selected options
+      downloadQueue = selectedOptions;
+      currentDownloadIndex = 0;
+
+      const firstOpt = downloadQueue[0];
+      const filename = firstOpt.value;
       if (!filename || filename.includes('Scanning')) return;
-      const selectedOpt = fileSelect.options[fileSelect.selectedIndex];
-      downloadTotalSize = parseInt(selectedOpt.dataset.size || '0', 10);
+
+      fileSelect.value = filename;
+      const size = parseInt(firstOpt.dataset.size || '0', 10);
+      downloadTotalSize = Number.isNaN(size) ? 0 : size;
       downloadBytesReceived = 0;
       fileBuffer = [];
       isDownloading = true;
       startTime = Date.now();
-      dlStatus.innerText = 'Requesting...';
+      dlStatus.innerText = downloadQueue.length > 1
+        ? `Requesting ${filename} (1/${downloadQueue.length})…`
+        : 'Requesting...';
       sendCommand(`get ${filename}`);
     };
 
@@ -705,7 +883,9 @@ function Home() {
             
             if (shouldCreateNewTimeline) {
               // Create new timeline (first file or fallback after failure)
-              result = await transcribeAudioQueued(file.blob, file.filename);
+              // Use device-provided recording time when available so timeline shows actual recording time
+              const recordingTimeISO = file.recordingStartTime || undefined;
+              result = await transcribeAudioQueued(file.blob, file.filename, recordingTimeISO);
               timelineId = result.timelineId || 1;
               allEvents = result.events || [];
               
@@ -713,8 +893,9 @@ function Home() {
                 console.log(`[Frontend] First file failed, created new timeline ${timelineId} for file ${i + 1}`);
               }
             } else {
-              // Append to existing timeline
-              result = await appendAudioQueued(timelineId, file.blob, file.filename);
+              // Append to existing timeline (preserve per-file recording time when available)
+              const recordingTimeISO = file.recordingStartTime || undefined;
+              result = await appendAudioQueued(timelineId, file.blob, file.filename, recordingTimeISO);
               // Append returns updated events array
               allEvents = result.events || allEvents;
             }
@@ -829,14 +1010,86 @@ function Home() {
       }
     };
 
+    const onSaveConfigClick = async () => {
+      const recLength = document.getElementById('recLengthSlider')?.value || '30';
+      const actThresh = document.getElementById('actThresh')?.value || '1800';
+      const actTime = document.getElementById('actTime')?.value || '10';
+      const inaThresh = document.getElementById('inaThresh')?.value || '1500';
+      const inaTime = document.getElementById('inaTime')?.value || '10';
+      
+      try {
+        await sendCommand(`cfg_rec ${recLength}`);
+        await new Promise(resolve => setTimeout(resolve, 200));
+        await sendCommand(`cfg_acc ${actThresh} ${actTime} ${inaThresh} ${inaTime}`);
+        dlStatus.innerText = 'Configuration saved to device';
+        setDownloadStatus('Configuration saved to device');
+      } catch (error) {
+        console.error('Error saving config:', error);
+        dlStatus.innerText = 'Error saving configuration';
+        setDownloadStatus('Error saving configuration');
+      }
+    };
+
+    const onDefaultConfigClick = async () => {
+      const recLengthSlider = document.getElementById('recLengthSlider');
+      const sVal = document.getElementById('sVal');
+      const actThresh = document.getElementById('actThresh');
+      const actTime = document.getElementById('actTime');
+      const inaThresh = document.getElementById('inaThresh');
+      const inaTime = document.getElementById('inaTime');
+      
+      if (recLengthSlider) recLengthSlider.value = '30';
+      if (sVal) sVal.innerText = '30s';
+      if (actThresh) actThresh.value = '1800';
+      if (actTime) actTime.value = '10';
+      if (inaThresh) inaThresh.value = '1500';
+      if (inaTime) inaTime.value = '10';
+      
+      try {
+        await sendCommand('cfg_rec 30');
+        await new Promise(resolve => setTimeout(resolve, 200));
+        await sendCommand('cfg_acc 1800 10 1500 10');
+        dlStatus.innerText = 'Defaults restored and saved';
+        setDownloadStatus('Defaults restored and saved');
+      } catch (error) {
+        console.error('Error resetting config:', error);
+        dlStatus.innerText = 'Error resetting configuration';
+        setDownloadStatus('Error resetting configuration');
+      }
+    };
+
+    const onSyncTimeClick = async () => {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1;
+      const day = now.getDate();
+      const hours = now.getHours();
+      const minutes = now.getMinutes();
+      const seconds = now.getSeconds();
+      
+      try {
+        await sendCommand(`time ${year} ${month} ${day} ${hours} ${minutes} ${seconds}`);
+        dlStatus.innerText = 'RTC time synced';
+        setDownloadStatus('RTC time synced');
+      } catch (error) {
+        console.error('Error syncing time:', error);
+        dlStatus.innerText = 'Error syncing time';
+        setDownloadStatus('Error syncing time');
+      }
+    };
+
     btnScan.addEventListener('click', onScanClick);
     btnDisconnect.addEventListener('click', onDisconnectClick);
     btnRefresh.addEventListener('click', onRefreshClick);
     btnDownload.addEventListener('click', onDownloadClick);
+    btnDelete.addEventListener('click', onDeleteClick);
     fileInput.addEventListener('change', onFileChange);
     btnStartUpload.addEventListener('click', onStartUploadClick);
     btnStopUpload.addEventListener('click', onStopUploadClick);
     btnTranscribe.addEventListener('click', onTranscribeClick);
+    btnSaveConfig.addEventListener('click', onSaveConfigClick);
+    btnDefaultConfig.addEventListener('click', onDefaultConfigClick);
+    btnSyncTime.addEventListener('click', onSyncTimeClick);
 
     // initial UI state
     onDisconnected();
@@ -848,10 +1101,14 @@ function Home() {
         btnDisconnect.removeEventListener('click', onDisconnectClick);
         btnRefresh.removeEventListener('click', onRefreshClick);
         btnDownload.removeEventListener('click', onDownloadClick);
+        btnDelete.removeEventListener('click', onDeleteClick);
         fileInput.removeEventListener('change', onFileChange);
         btnStartUpload.removeEventListener('click', onStartUploadClick);
         btnStopUpload.removeEventListener('click', onStopUploadClick);
         btnTranscribe.removeEventListener('click', onTranscribeClick);
+        btnSaveConfig.removeEventListener('click', onSaveConfigClick);
+        btnDefaultConfig.removeEventListener('click', onDefaultConfigClick);
+        btnSyncTime.removeEventListener('click', onSyncTimeClick);
       } catch {
         // ignore
       }
@@ -877,15 +1134,28 @@ function Home() {
           Bluetooth: <span id="bleDeviceName">{bleDeviceName}</span>
         </div>
         <div className="menu-item active">Home</div>
-        <div className="menu-item" onClick={() => navigate('/timeline/1')}>
-          Event Log →
+        <div className="menu-item" onClick={() => navigate('/menu')}>
+          Main Menu →
         </div>
-        <div className="menu-item" onClick={() => navigate('/login')}>
-          Login / Register →
+        <div className="menu-item" onClick={() => navigate(user ? '/account' : '/login')}>
+          {user ? 'Account →' : 'Login / Register →'}
         </div>
         <div className="user-panel">
-          <div className="avatar-circle">👤</div>
-          <div className="username">guest</div>
+          <div className="avatar-circle">
+            {user?.username ? user.username.charAt(0).toUpperCase() : '👤'}
+          </div>
+          <div className="username">{user?.username || 'guest'}</div>
+          {user && (
+            <div
+              className="logout-link"
+              onClick={async () => {
+                await logout();
+                navigate('/login');
+              }}
+            >
+              Logout
+            </div>
+          )}
         </div>
       </div>
 
@@ -936,7 +1206,7 @@ function Home() {
               Status: Idle
             </div>
             <div className="control-group">
-              <select id="fileSelect">
+              <select id="fileSelect" multiple>
                 <option>Disconnected</option>
               </select>
               <button className="btn btn-blue" id="btnRefresh" disabled title="Refresh list">
@@ -944,6 +1214,9 @@ function Home() {
               </button>
               <button className="btn btn-green" id="btnDownload" disabled>
                 DOWNLOAD
+              </button>
+              <button className="btn btn-red" id="btnDelete" disabled>
+                DELETE
               </button>
               <button className="btn btn-orange" id="btnTranscribe" style={{ display: 'none' }}>
                 TRANSCRIBE
@@ -992,6 +1265,93 @@ function Home() {
                 : localUploadFiles.length > 1
                   ? `TRANSCRIBE ${localUploadFiles.length} FILES`
                   : 'TRANSCRIBE & OPEN TIMELINE'}
+            </button>
+          </div>
+        </div>
+
+        <div className="card bottom-row">
+          <div className="card-header">
+            <div className="icon-box purple-icon">⚙️</div>
+            <div>
+              <h3>Device Parameters</h3>
+              <p className="subtext">Push settings directly to NVS memory</p>
+            </div>
+          </div>
+          <div style={{ marginBottom: '15px' }}>
+            <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600, fontSize: '13px', color: '#444' }}>
+              Audio Recording Length (s)
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <input
+                type="range"
+                min="10"
+                max="300"
+                defaultValue="30"
+                id="recLengthSlider"
+                style={{ flex: 1, cursor: 'pointer' }}
+                onChange={(e) => {
+                  const val = document.getElementById('sVal');
+                  if (val) val.innerText = e.target.value + 's';
+                }}
+              />
+              <span id="sVal" style={{ fontWeight: 'bold', color: '#555', minWidth: '40px' }}>30s</span>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600, fontSize: '13px', color: '#444' }}>
+                Activity Threshold
+              </label>
+              <input
+                type="number"
+                id="actThresh"
+                defaultValue="1800"
+                style={{ width: '100%', padding: '10px', border: '1px solid rgba(0,0,0,0.1)', background: 'rgba(255,255,255,0.8)', borderRadius: '6px' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600, fontSize: '13px', color: '#444' }}>
+                Activity Time (ms)
+              </label>
+              <input
+                type="number"
+                id="actTime"
+                defaultValue="10"
+                style={{ width: '100%', padding: '10px', border: '1px solid rgba(0,0,0,0.1)', background: 'rgba(255,255,255,0.8)', borderRadius: '6px' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600, fontSize: '13px', color: '#444' }}>
+                Inactivity Threshold
+              </label>
+              <input
+                type="number"
+                id="inaThresh"
+                defaultValue="1500"
+                style={{ width: '100%', padding: '10px', border: '1px solid rgba(0,0,0,0.1)', background: 'rgba(255,255,255,0.8)', borderRadius: '6px' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600, fontSize: '13px', color: '#444' }}>
+                Inactivity Time (ms)
+              </label>
+              <input
+                type="number"
+                id="inaTime"
+                defaultValue="10"
+                style={{ width: '100%', padding: '10px', border: '1px solid rgba(0,0,0,0.1)', background: 'rgba(255,255,255,0.8)', borderRadius: '6px' }}
+              />
+            </div>
+          </div>
+          <div className="control-group" style={{ marginTop: '20px', borderTop: '1px solid rgba(0,0,0,0.1)', paddingTop: '20px' }}>
+            <button className="btn btn-green" id="btnSaveConfig" disabled>
+              SAVE TO DEVICE
+            </button>
+            <button className="btn btn-dark" id="btnDefaultConfig" disabled>
+              RESET DEFAULTS
+            </button>
+            <button className="btn btn-blue" id="btnSyncTime" disabled style={{ marginLeft: 'auto' }}>
+              SYNC RTC TIME
             </button>
           </div>
         </div>

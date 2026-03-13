@@ -1,45 +1,46 @@
 .audio-player {
   display: inline-flex;
-  gap: 12px;
+  gap: 14px;
   align-items: center;
   justify-content: flex-end;
+  min-height: 48px;
 }
 
 .audio-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .progress-bar {
-  height: 8px;
-  width: 92px;
+  height: 12px;
+  width: 140px;
   background: linear-gradient(90deg, #d4eef0, #c2e7ea);
-  border-radius: 6px;
+  border-radius: 8px;
   position: relative;
   overflow: hidden;
 }
 
 .progress-fill {
   position: absolute;
-  height: 8px;
+  height: 12px;
   width: var(--progress, 0%);
   left: 0;
   top: 0;
   background: linear-gradient(90deg, #0f5961, #59d7df);
-  border-radius: 6px;
+  border-radius: 8px;
   transition: width 0.1s linear;
 }
 
 .play-button {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: linear-gradient(180deg, #2f93a5, #1e6f78);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.12);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.15);
   border: none;
   cursor: pointer;
   transition: transform 0.2s;
@@ -54,13 +55,18 @@
   cursor: not-allowed;
 }
 
+.play-button svg {
+  width: 18px;
+  height: 18px;
+}
+
 .time-display {
-  font-size: 11px;
+  font-size: 13px;
   color: #0a5056;
   font-weight: 600;
-  min-width: 35px;
+  min-width: 42px;
 }
 
 .loading-spinner {
-  font-size: 12px;
+  font-size: 14px;
 }

@@ -27,7 +27,9 @@ router.post('/register',
         return res.status(400).json({ error: 'Username or email already exists' });
       }
 
+      console.log('[AUTH-DEBUG] Register attempt', { username, email });
       const user = await User.create(username, email, password);
+      console.log('[AUTH-DEBUG] User created', { id: user.id, username: user.username, email: user.email, is_admin: user.is_admin ?? 0 });
       const token = generateToken(user);
 
       // Log successful account creation (treated as sign-in)

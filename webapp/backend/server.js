@@ -5,9 +5,31 @@ const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
 
+// Minimize noisy debug logs by default; show only when ECHOLOG_DEBUG=true
+const ORIGINAL_CONSOLE_LOG = console.log;
+const ORIGINAL_CONSOLE_ERROR = console.error;
+const DEBUG_ENABLED = process.env.ECHOLOG_DEBUG === 'true';
+
+console.log = (...args) => {
+  if (!DEBUG_ENABLED && typeof args[0] === 'string' && args[0].includes('DEBUG]')) {
+    return;
+  }
+  ORIGINAL_CONSOLE_LOG(...args);
+};
+
+console.error = (...args) => {
+  if (!DEBUG_ENABLED && typeof args[0] === 'string' && args[0].includes('DEBUG]')) {
+    return;
+  }
+  ORIGINAL_CONSOLE_ERROR(...args);
+};
+
 const authRoutes = require('./routes/auth');
 const timelineRoutes = require('./routes/timelines');
 const audioRoutes = require('./routes/audio');
+const userRoutes = require('./routes/user');
+const settingsRoutes = require('./routes/settings');
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -32,6 +54,9 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/timelines', timelineRoutes);
 app.use('/api/audio', audioRoutes);
+app.use('/api/user', userRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

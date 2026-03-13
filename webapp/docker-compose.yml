@@ -1,0 +1,23 @@
+﻿services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    # Host 3001 -> container 3001 (avoids conflict when nodemon/local server already uses 3001)
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - SQLITE_PATH=/data/echolog.db
+      - USE_MOCK_DATA=false
+    volumes:
+      - sqlite_data:/data
+      - ./backend/uploads:/app/uploads
+    restart: unless-stopped
+
+volumes:
+  sqlite_data:
+    driver: local
+
+

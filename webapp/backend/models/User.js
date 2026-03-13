@@ -1,16 +1,15 @@
-/*CEG491X-Capstone/webapp/Backend/models/User.js*/
-
-const { db } = require('../database/db');
+﻿const { db } = require('../database/db');
 const bcrypt = require('bcryptjs');
 
 class User {
-  static async create(username, email, password) {
+  static async create(username, email, password, options = {}) {
     const passwordHash = await bcrypt.hash(password, 10);
-    
+    const isAdmin = options.isAdmin ? 1 : 0;
+
     return new Promise((resolve, reject) => {
       db.run(
-        `INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)`,
-        [username, email, passwordHash],
+        `INSERT INTO users (username, email, password_hash, is_admin) VALUES (?, ?, ?, ?)`,
+        [username, email, passwordHash, isAdmin],
         function(err) {
           if (err) {
             if (err.message.includes('UNIQUE constraint')) {
@@ -19,7 +18,7 @@ class User {
               reject(err);
             }
           } else {
-            resolve({ id: this.lastID, username, email });
+            resolve({ id: this.lastID, username, email, is_admin: isAdmin });
           }
         }
       );
@@ -55,7 +54,7 @@ class User {
   static async findById(id) {
     return new Promise((resolve, reject) => {
       db.get(
-        `SELECT id, username, email, created_at FROM users WHERE id = ?`,
+        `SELECT id, username, email, is_admin, created_at FROM users WHERE id = ?`,
         [id],
         (err, row) => {
           if (err) reject(err);
@@ -81,6 +80,32 @@ class User {
         (err) => {
           if (err) reject(err);
           else resolve();
+        }
+      );
+    });
+  }
+
+  static async allBasic() {
+    return new Promise((resolve, reject) => {
+      db.all(
+        `SELECT id, username, email, is_admin, created_at FROM users ORDER BY id ASC`,
+        [],
+        (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows || []);
+        }
+      );
+    });
+  }
+
+  static async timelinesBasicByUserId(userId) {
+    return new Promise((resolve, reject) => {
+      db.all(
+        `SELECT id, user_id, device_id, date_generated, created_at, updated_at FROM timelines WHERE user_id = ? ORDER BY id DESC`,
+        [userId],
+        (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows || []);
         }
       );
     });

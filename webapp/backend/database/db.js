@@ -1,11 +1,8 @@
-/*CEG491X-Capstone/webapp/Backend/database/db.js*/
-const sqlite3 = require('sqlite3').verbose();
+﻿const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 
-const dbPath = path.join(__dirname, 'echolog.db');
-
-// Ensure database directory exists
+const dbPath = process.env.SQLITE_PATH || path.join(__dirname, 'echolog.db');
 const dbDir = path.dirname(dbPath);
 if (!fs.existsSync(dbDir)) {
   fs.mkdirSync(dbDir, { recursive: true });
@@ -21,7 +18,6 @@ const db = new sqlite3.Database(dbPath, (err) => {
 });
 
 function initializeDatabase() {
-  // Users table
   db.run(`CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
@@ -29,8 +25,12 @@ function initializeDatabase() {
     password_hash TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
+  db.run(`ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0`, (err) => {
+    if (err && !String(err.message).toLowerCase().includes('duplicate')) {
+      console.warn('ALTER users is_admin:', err.message);
+    }
+  });
 
-  // Sign-in attempts table
   db.run(`CREATE TABLE IF NOT EXISTS sign_in_attempts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
@@ -42,7 +42,6 @@ function initializeDatabase() {
     FOREIGN KEY (user_id) REFERENCES users(id)
   )`);
 
-  // Timelines table
   db.run(`CREATE TABLE IF NOT EXISTS timelines (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
@@ -53,7 +52,6 @@ function initializeDatabase() {
     FOREIGN KEY (user_id) REFERENCES users(id)
   )`);
 
-  // Events table (timeline entries)
   db.run(`CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timeline_id INTEGER NOT NULL,
@@ -69,7 +67,6 @@ function initializeDatabase() {
     FOREIGN KEY (timeline_id) REFERENCES timelines(id) ON DELETE CASCADE
   )`);
 
-  // Audio recordings table
   db.run(`CREATE TABLE IF NOT EXISTS audio_recordings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_id INTEGER NOT NULL,
@@ -81,15 +78,27 @@ function initializeDatabase() {
     FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
   )`);
 
+  db.run(`CREATE TABLE IF NOT EXISTS user_settings (
+    user_id INTEGER PRIMARY KEY,
+    device_name TEXT,
+    recording_length INTEGER,
+    auto_upload INTEGER,
+    gps_enabled INTEGER,
+    notifications INTEGER,
+    theme TEXT,
+    language TEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`);
+
   console.log('Database tables initialized');
 }
 
 function closeDatabase() {
   return new Promise((resolve, reject) => {
     db.close((err) => {
-      if (err) {
-        reject(err);
-      } else {
+      if (err) reject(err);
+      else {
         console.log('Database connection closed');
         resolve();
       }

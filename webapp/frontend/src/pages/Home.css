@@ -7,6 +7,46 @@
   position: relative;
 }
 
+body.dark-mode {
+  /* dark, desaturated blue background (darker than sidebar gradient) */
+  background: #022033;
+  color: #e5e7eb;
+}
+
+body.dark-mode .home-shell {
+  background: #022033;
+}
+
+body.dark-mode .sidebar {
+  /* keep sidebar slightly lighter so content area feels deeper */
+  background: linear-gradient(180deg, #1a7199 0%, #0f4c66 100%);
+}
+
+body.dark-mode .card {
+  /* card slightly lighter than main background, with bluish tint */
+  background: rgba(10, 54, 88, 0.95);
+  border-color: rgba(148, 196, 224, 0.5);
+  color: #ffffff;
+}
+
+body.dark-mode .info-line,
+body.dark-mode .local-upload-status {
+  background: rgba(5, 36, 60, 0.95);
+  border-left-color: #38bdf8;
+  color: #e5e7eb;
+}
+
+body.dark-mode h3,
+body.dark-mode .subtext,
+body.dark-mode .welcome-hero h1,
+body.dark-mode .welcome-hero p {
+  color: #ffffff;
+}
+
+body.dark-mode .subtext {
+  opacity: 0.85;
+}
+
 /* Floating background squares animation */
 .floating-bg {
   position: fixed;
@@ -395,6 +435,10 @@ h3 {
 
 .btn-blue {
   background: linear-gradient(135deg, #2196f3, #1976d2);
+}
+
+.btn-dark {
+  background: linear-gradient(135deg, #455a64, #263238);
 }
 
 select {

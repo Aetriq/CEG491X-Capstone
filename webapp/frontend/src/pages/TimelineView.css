@@ -96,67 +96,6 @@
   overflow: hidden;
 }
 
-.timeline-layout .sidebar {
-  width: 250px;
-  background: linear-gradient(180deg, #1a7199 0%, #0f4c66 100%);
-  color: white;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid #ccc;
-  flex-shrink: 0;
-  overflow-y: auto;
-}
-
-.timeline-layout .logo {
-  font-size: 24px;
-  font-weight: bold;
-  margin-bottom: 30px;
-  letter-spacing: 1px;
-}
-
-.device-card {
-  background: rgba(255, 255, 255, 0.1);
-  padding: 15px;
-  border-radius: 10px;
-  margin-bottom: 15px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(5px);
-}
-
-.status-row {
-  margin-bottom: 8px;
-  font-size: 13px;
-}
-
-.status-label {
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.device-actions {
-  margin-top: 15px;
-}
-
-.device-actions .btn {
-  width: 100%;
-  padding: 12px;
-  margin-bottom: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 5px;
-  font-weight: bold;
-  color: white;
-  cursor: pointer;
-  text-align: center;
-  font-size: 13px;
-  background: rgba(0, 0, 0, 0.2);
-  transition: 0.2s;
-}
-
-.device-actions .btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-  transform: translateX(3px);
-}
-
 .content {
   flex: 1;
   padding: 0;
@@ -164,6 +103,73 @@
   flex-direction: column;
   background: #fdfdfd;
   overflow-y: auto;
+}
+
+/* Dark mode to match Home/Menu/Settings/Account */
+body.dark-mode .timeline-view-container {
+  background: #022033; /* darker blue than sidebar */
+}
+
+body.dark-mode .timeline-layout .sidebar {
+  background: linear-gradient(180deg, #1a7199 0%, #0f4c66 100%);
+}
+
+body.dark-mode .content {
+  background: #022033;
+  color: #e5e7eb;
+}
+
+body.dark-mode .header-row {
+  background: rgba(10, 54, 88, 0.95);
+  border-bottom-color: rgba(148, 196, 224, 0.5);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+}
+
+body.dark-mode .title,
+body.dark-mode .subtitle {
+  color: #ffffff;
+}
+
+body.dark-mode .table {
+  background: rgba(10, 54, 88, 0.95); /* lighter than background */
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
+body.dark-mode .table thead {
+  background: rgba(5, 36, 60, 0.95);
+}
+
+body.dark-mode .table th,
+body.dark-mode .table td {
+  color: #ffffff;
+  border-bottom-color: rgba(15, 23, 42, 0.9);
+}
+
+body.dark-mode .table tbody tr:hover {
+  background: rgba(15, 46, 78, 0.95);
+}
+
+body.dark-mode .rownum {
+  background: #38bdf8;
+  color: #022033;
+}
+
+body.dark-mode .time,
+body.dark-mode .time-date,
+body.dark-mode .position,
+body.dark-mode .no-audio {
+  color: #e5e7eb;
+}
+
+body.dark-mode .edit-textarea {
+  background: rgba(15, 23, 42, 0.9);
+  color: #ffffff;
+  border-color: rgba(148, 196, 224, 0.5);
+}
+
+body.dark-mode .loading,
+body.dark-mode .error {
+  color: #e5e7eb;
 }
 
 .header-row {
@@ -249,6 +255,12 @@
   font-family: monospace;
   font-size: 13px;
   color: #555;
+}
+
+.time-date {
+  font-size: 11px;
+  color: #888;
+  margin-top: 2px;
 }
 
 .transcript {

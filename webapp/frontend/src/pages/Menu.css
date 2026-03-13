@@ -221,6 +221,33 @@
   color: #607d8b;
 }
 
+/* Dark mode overrides to match Home/Settings/Account */
+body.dark-mode .menu-container {
+  background: #022033;
+}
+
+body.dark-mode .main-content {
+  background: #022033;
+  color: #e5e7eb;
+}
+
+body.dark-mode .timeline-card {
+  background: rgba(10, 54, 88, 0.95); /* lighter than dark background */
+  border-color: rgba(148, 196, 224, 0.5);
+  color: #ffffff;
+}
+
+body.dark-mode .timeline-header h3,
+body.dark-mode .timeline-date,
+body.dark-mode .timeline-info {
+  color: #ffffff;
+}
+
+body.dark-mode .empty-state {
+  background: rgba(10, 54, 88, 0.95);
+  color: #e5e7eb;
+}
+
 .timeline-info p {
   margin: 5px 0;
 }
