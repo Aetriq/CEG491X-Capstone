@@ -23,7 +23,7 @@
 /* ========== TABLE OF CONTENTS ========== 
    1.0 Includes
    2.0 Pin Definitions
-   3.0 External Variables
+   3.0 External Variables & Enums
 ========================================*/
 
 /* ==================== 1.0 Includes ==================== */
@@ -47,9 +47,12 @@
 #define I2C_MASTER_SCL_IO GPIO_NUM_2
 #define RGB_LED_PIN       GPIO_NUM_48
 
-/* ==================== 3.0 External Variables ==================== */
-typedef enum { LED_IDLE, LED_BT_UNPAIRED, LED_BT_PAIRED, LED_BT_DISCONNECTING, LED_REC_IDLE, LED_REC_STARTUP, LED_REC_ACTIVE, LED_REC_ERROR } led_state_t;
+/* ==================== 3.0 External Variables & Enums ==================== */
+typedef enum { LED_IDLE, LED_BT_UNPAIRED, LED_BT_PAIRED, LED_BT_DISCONNECTING, LED_REC_IDLE, LED_REC_STARTUP, LED_REC_ACTIVE, LED_REC_ERROR, LED_SYS_FLOATING } led_state_t;
+typedef enum { MODE_SLEEP, MODE_BLUETOOTH, MODE_RECORDING, MODE_FLOATING } system_mode_t;
+
 extern volatile led_state_t sys_led_state;
 extern led_strip_handle_t led_strip;
+system_mode_t get_system_mode(void);
 
 #endif

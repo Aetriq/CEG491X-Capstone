@@ -22,7 +22,7 @@
 
 /* ========== TABLE OF CONTENTS ========== 
    1.0 Includes
-   2.0 Variables
+   2.0 Variables & State Logic
    3.0 Persistent LED Task
    4.0 Main Application
 ========================================*/
@@ -32,13 +32,24 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include "esp_system.h"
+#include "esp_sleep.h"
+#include "esp_adc/adc_oneshot.h"
 #include "globals.h"
 #include "bluetooth_mode.h"
 #include "recording_mode.h"
 
-/* ==================== 2.0 Variables ==================== */
+/* ==================== 2.0 Variables & State Logic ==================== */
 led_strip_handle_t led_strip;
 volatile led_state_t sys_led_state = LED_IDLE;
+adc_oneshot_unit_handle_t adc_handle;
+
+system_mode_t get_system_mode(void) {
+    int adc_raw = 0; adc_oneshot_read(adc_handle, ADC_CHANNEL_0, &adc_raw); // GPIO1 = ADC1_CH0
+    if (adc_raw < 500) return MODE_SLEEP;
+    if (adc_raw > 1600 && adc_raw < 2100) return MODE_BLUETOOTH; 
+    if (adc_raw > 3500) return MODE_RECORDING; 
+    return MODE_FLOATING;
+}
 
 /* ==================== 3.0 Persistent LED Task ==================== */
 void persistent_led_task(void *pvParameters) {
@@ -53,6 +64,7 @@ void persistent_led_task(void *pvParameters) {
             case LED_REC_STARTUP: led_strip_set_pixel(led_strip, 0, 50, 0, 0); led_strip_refresh(led_strip); vTaskDelay(pdMS_TO_TICKS(500)); led_strip_clear(led_strip); led_strip_refresh(led_strip); vTaskDelay(pdMS_TO_TICKS(500)); break;
             case LED_REC_ACTIVE: led_strip_set_pixel(led_strip, 0, 50, 0, 0); led_strip_refresh(led_strip); vTaskDelay(pdMS_TO_TICKS(250)); break;
             case LED_REC_ERROR: led_strip_set_pixel(led_strip, 0, 50, 50, 50); led_strip_refresh(led_strip); vTaskDelay(pdMS_TO_TICKS(1500)); sys_led_state = LED_REC_IDLE; break;
+            case LED_SYS_FLOATING: led_strip_set_pixel(led_strip, 0, 50, 50, 50); led_strip_refresh(led_strip); vTaskDelay(pdMS_TO_TICKS(150)); led_strip_clear(led_strip); led_strip_refresh(led_strip); vTaskDelay(pdMS_TO_TICKS(150)); break;
         }
     }
 }
@@ -67,19 +79,20 @@ void app_main(void) {
     esp_err_t ret = nvs_flash_init(); 
     if(ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) { ESP_ERROR_CHECK(nvs_flash_erase()); nvs_flash_init(); }
 
-    gpio_reset_pin(PIN_MODE_SEL); gpio_set_direction(PIN_MODE_SEL, GPIO_MODE_INPUT); gpio_set_pull_mode(PIN_MODE_SEL, GPIO_PULLUP_ONLY);
+    adc_oneshot_unit_init_cfg_t init_config = { .unit_id = ADC_UNIT_1 }; ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config, &adc_handle));
+    adc_oneshot_chan_cfg_t config = { .bitwidth = ADC_BITWIDTH_DEFAULT, .atten = ADC_ATTEN_DB_12 }; ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, ADC_CHANNEL_0, &config));
+
+    if (get_system_mode() == MODE_SLEEP) { led_strip_clear(led_strip); led_strip_refresh(led_strip); esp_sleep_enable_timer_wakeup(500000); esp_deep_sleep_start(); }
 
     xTaskCreate(persistent_led_task, "sys_led", 2048, NULL, 5, NULL);
 
-    if(gpio_get_level(PIN_MODE_SEL) == 0) { 
-        sys_led_state = LED_BT_UNPAIRED; 
-        bluetooth_mode_main(); 
-    } else { 
-        sys_led_state = LED_REC_IDLE; 
-        recording_mode_main(); 
+    while(1) {
+        system_mode_t mode = get_system_mode();
+        if (mode == MODE_BLUETOOTH) { sys_led_state = LED_BT_UNPAIRED; bluetooth_mode_main(); } 
+        else if (mode == MODE_RECORDING) { sys_led_state = LED_REC_IDLE; recording_mode_main(); }
+        else if (mode == MODE_FLOATING) { sys_led_state = LED_SYS_FLOATING; vTaskDelay(pdMS_TO_TICKS(250)); continue; }
+        else if (mode == MODE_SLEEP) { sys_led_state = LED_IDLE; vTaskDelay(pdMS_TO_TICKS(100)); esp_sleep_enable_timer_wakeup(500000); esp_deep_sleep_start(); }
+        
+        sys_led_state = LED_IDLE; vTaskDelay(pdMS_TO_TICKS(500)); esp_restart();
     }
-    
-    sys_led_state = LED_IDLE; 
-    vTaskDelay(pdMS_TO_TICKS(500));
-    esp_restart();
 }

@@ -116,9 +116,9 @@ void init_mic() {
 /* ==================== 4.0 Recording Mode Main ==================== */
 void recording_mode_main(void) {
     rtc_init_and_sync(); init_mic(); device_config_t cfg; load_config(&cfg);
-    while(gpio_get_level(PIN_MODE_SEL) == 1) {
+    while(get_system_mode() == MODE_RECORDING) {
         sys_led_state = LED_REC_IDLE; init_adxl(&cfg); bool triggered = false;
-        while(gpio_get_level(PIN_MODE_SEL) == 1) {
+        while(get_system_mode() == MODE_RECORDING) {
             if(gpio_get_level(ADXL_PIN_NUM_INT1) == 1) {
                 int64_t start = esp_timer_get_time(); bool holds = true;
                 while((esp_timer_get_time() - start) < WAKEUP_HOLD_TIME_US) { if(gpio_get_level(ADXL_PIN_NUM_INT1) == 0) { holds = false; break; } vTaskDelay(pdMS_TO_TICKS(10)); }
@@ -127,10 +127,10 @@ void recording_mode_main(void) {
             vTaskDelay(pdMS_TO_TICKS(50));
         }
         deinit_adxl();
-        if(triggered && gpio_get_level(PIN_MODE_SEL) == 1) {
+        if(triggered && get_system_mode() == MODE_RECORDING) {
             sys_led_state = LED_REC_STARTUP;
-            for(int i = 0; i < STARTUP_DELAY_SEC * 10; i++) { if(gpio_get_level(PIN_MODE_SEL) == 0) break; vTaskDelay(pdMS_TO_TICKS(100)); }
-            if(gpio_get_level(PIN_MODE_SEL) == 0) continue;
+            for(int i = 0; i < STARTUP_DELAY_SEC * 10; i++) { if(get_system_mode() != MODE_RECORDING) break; vTaskDelay(pdMS_TO_TICKS(100)); }
+            if(get_system_mode() != MODE_RECORDING) continue;
             
             if(!init_sd_card()) { sys_led_state = LED_REC_ERROR; vTaskDelay(pdMS_TO_TICKS(1500)); continue; }
             sys_led_state = LED_REC_ACTIVE;
@@ -141,7 +141,7 @@ void recording_mode_main(void) {
             if(f) {
                 write_wav_header(f, 0); int32_t *i2s_buf = calloc(SAMPLES_PER_READ, 4); int16_t *wav_buf = calloc(SAMPLES_PER_READ, 2); size_t br = 0; uint32_t tot_bytes = 0;
                 int64_t end_t = esp_timer_get_time() + ((int64_t)cfg.record_length_sec * 1000000);
-                while(esp_timer_get_time() < end_t && gpio_get_level(PIN_MODE_SEL) == 1) {
+                while(esp_timer_get_time() < end_t && get_system_mode() == MODE_RECORDING) {
                     if(i2s_channel_read(g_rx_handle, i2s_buf, SAMPLES_PER_READ * 4, &br, 100) == ESP_OK) {
                         int smp = br / 4; for(int i=0; i<smp; i++) wav_buf[i] = (int16_t)(i2s_buf[i] >> 14);
                         fwrite(wav_buf, 2, smp, f); tot_bytes += smp * 2;

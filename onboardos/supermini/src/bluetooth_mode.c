@@ -119,7 +119,7 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
 void process_command_task(void *pvParameters) {
     uint8_t *fileBuf = malloc(TRANSFER_BLOCK_SIZE); char filepath[300];
     
-    while(gpio_get_level(PIN_MODE_SEL) == 0) {
+    while(get_system_mode() == MODE_BLUETOOTH) {
         if(cmd_ready) {
             if(!strcmp(pending_cmd, "ls")) { DIR *dir = opendir(MOUNT_POINT); if(dir) { struct dirent *entry; while((entry=readdir(dir))) { if(entry->d_type==DT_REG) { snprintf(filepath, sizeof(filepath), "%s/%s", MOUNT_POINT, entry->d_name); struct stat st; if(!stat(filepath, &st)) { char line[300]; int len=snprintf(line, sizeof(line), "%s|%ld", entry->d_name, st.st_size); send_notification((uint8_t*)line, len); vTaskDelay(pdMS_TO_TICKS(20)); } } } closedir(dir); } send_eof(); }
             else if(!strncmp(pending_cmd, "get ", 4)) { char *fname = pending_cmd+4; snprintf(filepath, sizeof(filepath), "%s/%s", MOUNT_POINT, (fname[0]=='/')?fname+1:fname); if(transfer_file) { fclose(transfer_file); } transfer_file = fopen(filepath, "rb"); if(transfer_file) { is_downloading = true; } else { send_eof(); } }
@@ -157,8 +157,9 @@ void bluetooth_mode_main() {
 
     xTaskCreate(process_command_task, "bt_sd", 4096*2, NULL, 5, NULL);
 
-    while(gpio_get_level(PIN_MODE_SEL) == 0) { vTaskDelay(pdMS_TO_TICKS(250)); } 
+    while(get_system_mode() == MODE_BLUETOOTH) { vTaskDelay(pdMS_TO_TICKS(250)); } 
 
+    // Disconnect safely and unmount to prevent file corruption before reboot
     if(device_connected) { esp_ble_gatts_close(gatts_if_handle, conn_id); }
     vTaskDelay(pdMS_TO_TICKS(500)); 
     if(transfer_file) { fclose(transfer_file); transfer_file = NULL; }
