@@ -2,416 +2,143 @@
 <html lang="en">
 <head>
     <link rel="icon" href="https://github.com/Aetriq/CEG491X-Capstone/blob/main/webapp/loadinglogo.png?raw=true">
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EchoLog DEV TOOL</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        :root { --sidebar-bg: #1a7199; --main-bg: #e0e8ef; --card-bg: rgba(255, 255, 255, 0.65); --glass-border: 1px solid rgba(255, 255, 255, 0.4); --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1); }
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { height: 100vh; background-color: var(--main-bg); overflow: hidden; display: flex; }
-        .sidebar { width: 300px; background: linear-gradient(180deg, var(--sidebar-bg) 0%, #0f4c66 100%); color: white; display: flex; flex-direction: column; padding: 20px; flex-shrink: 0; box-shadow: 5px 0 25px rgba(0,0,0,0.15); z-index: 10; }
-        .logo { font-size: 24px; font-weight: bold; margin-bottom: 20px; letter-spacing: 1px; line-height: 1.2; }
-        .dev-badge { color: #ff4c4c; font-size: 14px; font-weight: 900; letter-spacing: 2px; }
-        .status-panel { font-size: 13px; margin-bottom: 20px; background: rgba(0,0,0,0.25); padding: 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); }
-        .status-panel strong { color: #aaa; }
-        #console-box { flex: 1; background: #0a0a0a; border-radius: 8px; border: 1px solid #333; margin-top: 10px; display: flex; flex-direction: column; overflow: hidden; box-shadow: inset 0 0 10px rgba(0,0,0,0.8); }
-        .console-header { background: #222; padding: 8px 10px; font-size: 11px; font-weight: bold; color: #888; border-bottom: 1px solid #333; text-transform: uppercase; letter-spacing: 1px; }
-        #console-content { flex: 1; padding: 10px; overflow-y: auto; font-family: 'Courier New', Courier, monospace; font-size: 12px; color: #0f0; }
-        .log-entry { margin-bottom: 6px; word-wrap: break-word; line-height: 1.4; }
-        .log-time { color: #888; margin-right: 8px; }
-        .log-error { color: #ff4c4c; }
-        .log-warn { color: #ffeb3b; }
-        .log-info { color: #00bcd4; }
-        .main-content { flex: 1; padding: 30px; overflow-y: auto; background: var(--main-bg); }
-        .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
-        .full-width { grid-column: 1 / -1; }
-        .card { background: var(--card-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: var(--glass-border); border-radius: 12px; padding: 25px; box-shadow: var(--glass-shadow); transition: all 0.3s; }
-        .card-header { display: flex; align-items: center; margin-bottom: 15px; }
-        .icon-box { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-right: 15px; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .orange-icon { background: linear-gradient(135deg, #FF9800, #F57C00); }
-        .red-icon { background: linear-gradient(135deg, #b71c1c, #d32f2f); }
-        .teal-icon { background: linear-gradient(135deg, #00bcd4, #0097a7); }
-        .purple-icon { background: linear-gradient(135deg, #9C27B0, #7B1FA2); }
-        h3 { font-size: 18px; color: #2c3e50; margin-bottom: 5px; }
-        p.subtext { font-size: 13px; color: #607d8b; }
-        .control-group { margin-top: 15px; display: flex; flex-wrap: wrap; gap: 8px; }
-        .info-line { font-size: 13px; margin-bottom: 10px; color: #455a64; font-family: monospace; white-space: pre-wrap; background: rgba(255,255,255,0.6); padding: 8px 12px; border-radius: 6px; border-left: 4px solid #1a7199; }
-        .btn { border: none; padding: 10px 16px; border-radius: 6px; color: white; font-weight: bold; cursor: pointer; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; transition: 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 1px solid rgba(255,255,255,0.2); }
-        .btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); filter: brightness(110%); }
-        .btn:disabled { background: #cfd8dc !important; cursor: not-allowed; color: #90a4ae; border: none; box-shadow: none; }
-        .btn-green { background: linear-gradient(135deg, #4CAF50, #388E3C); }
-        .btn-orange { background: linear-gradient(135deg, #FF9800, #F57C00); }
-        .btn-red { background: linear-gradient(135deg, #F44336, #D32F2F); }
-        .btn-blue { background: linear-gradient(135deg, #2196F3, #1976D2); }
-        .btn-dark { background: linear-gradient(135deg, #455A64, #263238); }
-        .form-group { margin-bottom: 15px; }
-        .form-label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px; color: #444; }
-        .form-input { padding: 10px; border: 1px solid rgba(0,0,0,0.1); background: rgba(255,255,255,0.8); border-radius: 6px; width: 100%; transition: 0.2s; }
-        .form-input:focus { border-color: var(--sidebar-bg); background: white; outline: none; }
-        .form-slider { width: 100%; cursor: pointer; }
-        .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        :root { --bg:#1e1e1e; --surface:#252526; --text:#d4d4d4; --acc:#007acc; --acc-hov:#005f9e; --border:#3c3c3c; --err:#f48771; --ok:#89d185; }
+        body.light { --bg:#f3f3f3; --surface:#ffffff; --text:#333333; --acc:#007acc; --acc-hov:#005f9e; --border:#cccccc; --err:#d32f2f; --ok:#388e3c; }
+        * { box-sizing:border-box; margin:0; padding:0; font-family:'Consolas', 'Courier New', monospace; font-size:13px; color:var(--text); }
+        body { height:100vh; background:var(--bg); display:flex; overflow:hidden; }
+        .sidebar { width:320px; background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; padding:15px; z-index:10; }
+        .top-bar { position:absolute; top:0; right:0; padding:15px; display:flex; gap:15px; z-index:20; }
+        .top-btn { cursor:pointer; font-size:16px; transition:0.2s; color:var(--text); } .top-btn:hover { color:var(--acc); } #btnQuit:hover { color:var(--err); }
+        .logo { font-size:20px; font-weight:bold; margin-bottom:15px; color:var(--acc); }
+        .status-panel { background:var(--bg); padding:10px; border:1px solid var(--border); margin-bottom:15px; }
+        #console-box { flex:1; background:#000; border:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+        .console-hdr { background:#111; padding:5px; border-bottom:1px solid #333; color:#888; text-transform:uppercase; font-size:11px; }
+        #console-content { flex:1; padding:10px; overflow-y:auto; color:#d4d4d4; font-size:12px; }
+        .log-time { color:#569cd6; margin-right:5px; } .log-err { color:var(--err); } .log-warn { color:#d7ba7d; }
+        .main-content { flex:1; padding:40px 20px 20px 20px; overflow-y:auto; background:var(--bg); }
+        .grid { display:grid; grid-template-columns:1fr 1fr; gap:15px; } .full { grid-column:1/-1; }
+        .card { background:var(--surface); border:1px solid var(--border); padding:15px; }
+        .card-hdr { display:flex; align-items:center; margin-bottom:10px; border-bottom:1px solid var(--border); padding-bottom:5px; }
+        .card-hdr i { color:var(--acc); margin-right:10px; font-size:16px; }
+        h3 { font-size:14px; text-transform:uppercase; letter-spacing:0.5px; }
+        .ctrl-group { margin-top:10px; display:flex; flex-wrap:wrap; gap:5px; }
+        .btn { background:var(--surface); border:1px solid var(--border); padding:6px 12px; cursor:pointer; text-transform:uppercase; transition:0.1s; color:var(--text); }
+        .btn:hover:not(:disabled) { background:var(--acc); color:#fff; border-color:var(--acc); }
+        .btn:disabled { opacity:0.5; cursor:not-allowed; }
+        .info-box { background:var(--bg); padding:8px; border-left:3px solid var(--acc); margin-bottom:10px; white-space:pre-wrap; }
+        .input, .slider { width:100%; background:var(--bg); border:1px solid var(--border); padding:6px; color:var(--text); }
+        .input:focus { outline:1px solid var(--acc); border-color:var(--acc); }
+        .test-item { background:var(--bg); padding:10px; text-align:center; flex:1; border:1px solid var(--border); }
+        .dots { display:flex; justify-content:center; gap:5px; margin-top:8px; }
+        .dot { width:10px; height:10px; background:var(--border); } .dot.pass { background:var(--ok); } .dot.fail { background:var(--err); }
+        #fileList { height:120px; overflow-y:auto; background:var(--bg); border:1px solid var(--border); padding:5px; margin-bottom:10px; }
     </style>
 </head>
 <body>
-
+    <div class="top-bar"><i id="btnTheme" class="fas fa-sun top-btn" title="Toggle Theme"></i><i id="btnQuit" class="fas fa-power-off top-btn" title="Quit App"></i></div>
     <div class="sidebar">
-        <div class="logo">EchoLog<br><span class="dev-badge">DEV TOOL</span></div>
-        <div class="status-panel">
-            <strong>Device:</strong> <span id="sidebarConn" style="color:#ffcccc; font-weight:bold;">Disconnected</span><br><br>
-            <strong>Last Action:</strong><br><span id="sidebarStatus" style="color:#fff;">System initialized.</span>
-        </div>
-        <div id="console-box"><div class="console-header">System Console</div><div id="console-content"></div></div>
+        <div class="logo">ECHOLOG<span style="color:var(--text);">::DEVELOPMENT TOOL</span></div>
+        <div class="status-panel">CONN: <span id="sidebarConn" style="color:var(--err)">DISCONNECTED</span><br>STAT: <span id="sidebarStatus">SYS_INIT</span></div>
+        <div id="console-box"><div class="console-hdr">TERMINAL</div><div id="console-content"></div></div>
     </div>
-
-    <div class="main-content">
-        <div class="dashboard-grid">
-            
-            <div class="card full-width">
-                <div class="card-header"><div class="icon-box teal-icon"><i class="fas fa-link"></i></div><div><h3>Device Connection</h3><p class="subtext">Connect via BLE or USB Serial Cable</p></div></div>
-                <div class="control-group">
-                    <button class="btn btn-orange" id="btnScanBle">CONNECT BLE</button>
-                    <button class="btn btn-blue" id="btnScanSerial">CONNECT USB</button>
-                    <button class="btn btn-red" id="btnDisconnect" style="display:none">DISCONNECT</button>
-                    <span id="bleList" style="margin-left: 15px; font-weight: bold; align-self: center; color: #555;">Status: Not Connected</span>
-                </div>
+    <div class="main-content"><div class="grid">
+        <div class="card full"><div class="card-hdr"><i class="fas fa-network-wired"></i><h3>Hardware Interface</h3></div>
+            <div class="ctrl-group"><button class="btn" id="btnBle">Connect Bluetooth</button><button class="btn" id="btnSer">Connect Serial USB (Experimental)</button><button class="btn" id="btnDis" style="display:none; border-color:var(--err); color:var(--err);">DISCONNECT</button><span id="bleList" style="margin-left:10px; align-self:center;">TARGET: ???</span></div>
+        </div>
+        <div class="card"><div class="card-hdr"><i class="fas fa-hdd"></i><h3>Storage VFS</h3></div>
+            <div class="info-box" id="dlStatus">STATE: IDLE</div><div id="fileList">Awaiting connection...</div>
+            <div class="ctrl-group"><button class="btn" id="btnRef" disabled>Refresh</button><button class="btn" id="btnDl" disabled>Download</button><button class="btn" id="btnCanDl" disabled>HALT</button><button class="btn" id="btnDel" disabled>Delete File(s)</button></div>
+        </div>  
+        <div class="card"><div class="card-hdr"><i class="fas fa-upload"></i><h3>Firmware/Data Push</h3></div>
+            <div class="info-box" id="upStatus">BUFFER: EMPTY<br>SIZE: 0B</div>
+            <div class="ctrl-group"><input type="file" id="fIn" style="display:none;"><button class="btn" onclick="document.getElementById('fIn').click()">Select file(s)</button><button class="btn" id="btnUp" disabled>Download</button><button class="btn" id="btnStopUp" disabled>Stop</button></div>
+        </div>
+        <div class="card full"><div class="card-hdr"><i class="fas fa-microchip"></i><h3>NVS Parameters</h3></div>
+            <div style="margin-bottom:10px;">REC_LEN(s): <input type="range" min="10" max="300" value="30" class="slider" id="rLen" oninput="document.getElementById('sVal').innerText=this.value"><span id="sVal" style="margin-left:10px; color:var(--acc);">30</span></div>
+            <div class="grid" style="grid-template-columns:repeat(4, 1fr);">
+                <div>ACT_THR <input type="number" class="input" id="aTh" value="1800"></div><div>ACT_T(ms) <input type="number" class="input" id="aTi" value="10"></div>
+                <div>INA_THR <input type="number" class="input" id="iTh" value="1500"></div><div>INA_T(ms) <input type="number" class="input" id="iTi" value="10"></div>
             </div>
-
-            <div class="card">
-                <div class="card-header"><div class="icon-box red-icon"><i class="fas fa-folder-open"></i></div><div><h3>SD Card Storage</h3><p class="subtext">Download or delete raw files</p></div></div>
-                <div class="info-line" id="dlStatus">Status: Idle</div>
-                <div id="fileList" style="height: 150px; overflow-y: auto; background: rgba(255,255,255,0.8); border: 1px solid rgba(0,0,0,0.1); border-radius: 6px; padding: 5px; margin-bottom: 10px;">
-                    <div style="padding: 5px; color: #555; font-size: 13px;">Connect to device to list files...</div>
-                </div>
-                <div class="control-group">
-                    <button class="btn btn-blue" id="btnRefresh" disabled><i class="fas fa-sync"></i></button>
-                    <button class="btn btn-green" id="btnDownload" disabled>DOWNLOAD</button>
-                    <button class="btn btn-dark" id="btnCancelDownload" disabled>CANCEL DL</button>
-                    <button class="btn btn-red" id="btnDelete" disabled>DELETE</button>
-                </div>
-            </div>  
-
-            <div class="card">
-                <div class="card-header"><div class="icon-box orange-icon"><i class="fas fa-file-upload"></i></div><div><h3>Upload Files</h3><p class="subtext">Transfer files to onboard storage</p></div></div>
-                <div class="info-line" id="uploadStatus">File: None Selected<br>Size: 0 Bytes</div>
-                <div class="control-group">
-                    <input type="file" id="fileInput" style="display: none;">
-                    <button class="btn btn-orange" onclick="document.getElementById('fileInput').click()">SELECT FILE</button>
-                    <button class="btn btn-green" id="btnStartUpload" disabled>START UPLOAD</button>
-                    <button class="btn btn-red" id="btnStopUpload" disabled>STOP</button>
-                </div>
-            </div>
-
-            <div class="card full-width">
-                <div class="card-header"><div class="icon-box purple-icon"><i class="fas fa-sliders-h"></i></div><div><h3>Device Parameters</h3><p class="subtext">Push settings directly to NVS memory</p></div></div>
-                <div class="form-group"><label class="form-label">Audio Recording Length (s)</label><input type="range" min="10" max="300" value="30" class="form-slider" id="recLengthSlider" oninput="document.getElementById('sVal').innerText = this.value + 's'"><span id="sVal" style="margin-left:10px; font-weight:bold; color:#555">30s</span></div>
-                <div class="config-grid">
-                    <div class="form-group"><label class="form-label">Activity Threshold</label><input type="number" class="form-input" id="actThresh" value="1800"></div>
-                    <div class="form-group"><label class="form-label">Activity Time (ms)</label><input type="number" class="form-input" id="actTime" value="10"></div>
-                    <div class="form-group"><label class="form-label">Inactivity Threshold</label><input type="number" class="form-input" id="inaThresh" value="1500"></div>
-                    <div class="form-group"><label class="form-label">Inactivity Time (ms)</label><input type="number" class="form-input" id="inaTime" value="10"></div>
-                </div>
-                <div class="control-group" style="margin-top:20px; border-top:1px solid rgba(0,0,0,0.1); padding-top:20px;">
-                    <button class="btn btn-green" id="btnSaveConfig" disabled>SAVE TO DEVICE</button>
-                    <button class="btn btn-dark" id="btnDefaultConfig" disabled>RESET DEFAULTS</button>
-                    <button class="btn btn-blue" id="btnSyncTime" disabled style="margin-left: auto;">SYNC RTC TIME</button>
-                </div>
+            <div class="ctrl-group" style="margin-top:15px;"><button class="btn" id="btnSv" disabled>SAVE</button><button class="btn" id="btnDef" disabled>DEFAULT</button><button class="btn" id="btnRtc" disabled style="margin-left:auto;">SYNC_RTC</button></div>
+        </div>
+        <div class="card full"><div class="card-hdr"><i class="fas fa-stethoscope"></i><h3>Hardware Diagnostics</h3></div>
+            <div style="color:var(--err); margin-bottom:10px;">WARNING: DO NOT INTERRUPT OPERATIONS DURING TEST!</div><button class="btn" id="btnTest" disabled>RUN COMPONENT SELF-TEST</button>
+            <div style="display:flex; gap:10px; margin-top:15px;">
+                <div class="test-item" id="test-SD">SD_SPI<div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
+                <div class="test-item" id="test-ADXL">ADXL_SPI<div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
+                <div class="test-item" id="test-MIC">I2S_RX<div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
+                <div class="test-item" id="test-RTC">I2C_MST<div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
             </div>
         </div>
-    </div>
-
+    </div></div>
 <script>
-    const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
-    const CHAR_CMD_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
-    const CHAR_DATA_UUID = "829a287c-03c4-4c22-9442-70b9687c703b";
-    const CHAR_UPLOAD_UUID = "ce2e1b12-5883-4903-8120-001004b3410f";
-
-    // Connection State variables
-    let currentConnection = 'NONE'; // 'NONE', 'BLE', 'SERIAL'
-    let isConnected = false;
+    const S_UUID="4fafc201-1fb5-459e-8fcc-c5c9c331914b", C_UUID="beb5483e-36e1-4688-b7f5-ea07361b26a8", D_UUID="829a287c-03c4-4c22-9442-70b9687c703b", U_UUID="ce2e1b12-5883-4903-8120-001004b3410f";
+    let conn='NONE', dev, srv, svc, cChr, dChr, uChr, sPort, sRdr, fBuf=[], isDl=false, stopDl=false, stopUp=false, tSt, dlTot=0, dlRec=0, selF="", upF=null;
+    const el = id => document.getElementById(id), fmt = b => b===0?'0B':parseFloat((b/Math.pow(1024,Math.floor(Math.log(b)/Math.log(1024)))).toFixed(2))+' '+['B','KB','MB'][Math.floor(Math.log(b)/Math.log(1024))];
+    const log = (m, c='info') => { el('console-content').innerHTML += `<div style="margin-bottom:4px;word-break:break-all;"><span class="log-time">[${new Date().toTimeString().split(' ')[0]}]</span><span class="log-${c}">${m}</span></div>`; el('console-content').scrollTop = el('console-content').scrollHeight; };
+    const stat = m => { el('sidebarStatus').innerText = m; log(m); };
     
-    // BLE Variables
-    let device, server, service, cmdChar, dataChar, uploadChar;
+    el('btnTheme').onclick = () => { document.body.classList.toggle('light'); el('btnTheme').className = document.body.classList.contains('light') ? "fas fa-moon top-btn" : "fas fa-sun top-btn"; };
+    el('btnQuit').onclick = () => window.close(); // Closes the Chrome App natively
+
+    async function setConn(t) {
+        conn=t; el('btnTest').disabled=false; el('sidebarConn').innerText=`${t}_ACTIVE`; el('sidebarConn').style.color="var(--ok)"; el('bleList').innerText=`TARGET: ${t==='BLE'?dev.name:'USB_SER'}`;
+        el('btnBle').style.display='none'; el('btnSer').style.display='none'; el('btnDis').style.display='inline-block';
+        ['btnRef','btnDl','btnDel','btnUp','btnSv','btnDef','btnRtc'].forEach(id => el(id).disabled=false); stat(`LINK ESTABLISHED: ${t}`); refLs();
+    }
+    async function disConn(t) {
+        conn='NONE'; el('btnTest').disabled=true; el('sidebarConn').innerText="DISCONNECTED"; el('sidebarConn').style.color="var(--err)"; el('bleList').innerText="TARGET: NULL";
+        el('btnBle').style.display='inline-block'; el('btnSer').style.display='inline-block'; el('btnDis').style.display='none';
+        ['btnRef','btnDl','btnDel','btnUp','btnSv','btnDef','btnRtc'].forEach(id => el(id).disabled=true); el('fileList').innerHTML="NULL"; stat("LINK SEVERED.");
+        if(t==='SERIAL' && sPort) { try{await sPort.close();}catch(e){} sPort=null; }
+    }
+
+    el('btnBle').onclick = async () => { try { log("REQ_BLE...",'warn'); dev = await navigator.bluetooth.requestDevice({filters:[{namePrefix:"SuperMini"},{namePrefix:"EchoLog"}],optionalServices:[S_UUID]}); dev.addEventListener('gattserverdisconnected',()=>disConn('BLE')); srv = await dev.gatt.connect(); svc = await srv.getPrimaryService(S_UUID); cChr = await svc.getCharacteristic(C_UUID); dChr = await svc.getCharacteristic(D_UUID); uChr = await svc.getCharacteristic(U_UUID); await dChr.startNotifications(); dChr.addEventListener('characteristicvaluechanged',e=>hIn(e.target.value)); setConn('BLE'); } catch(e) { log(`ERR:${e.message}`,'err'); }};
+    el('btnSer').onclick = async () => { try { log("REQ_SER...",'warn'); sPort = await navigator.serial.requestPort(); await sPort.open({baudRate:115200,bufferSize:8192}); setConn('SERIAL'); sLoop(); } catch(e) { log(`ERR:${e.message}`,'err'); }};
+    async function sLoop() { while(sPort.readable&&conn==='SERIAL') { sRdr=sPort.readable.getReader(); try{ while(true){ const{value,done}=await sRdr.read(); if(done)break; if(value) hIn(new DataView(value.buffer,value.byteOffset,value.byteLength)); } }catch(e){disConn('SERIAL');} finally{sRdr.releaseLock();} } }
+    el('btnDis').onclick = () => { if(conn==='BLE'&&dev.gatt.connected) dev.gatt.disconnect(); else if(conn==='SERIAL') { if(sRdr) sRdr.cancel(); else disConn('SERIAL'); }};
+    el('btnTest').onclick = () => { if(!confirm("Run diagnostics? Do not disconnect or turn off the device when running this."))return; stat("DIAG EXEC..."); document.querySelectorAll('.dot').forEach(d=>d.className='dot'); sCmd("selftest"); };
     
-    // Serial Variables
-    let serialPort, serialReader;
-
-    // Operation State
-    let fileBuffer = [];
-    let isDownloading = false;
-    let stopDownloadFlag = false;
-    let stopUploadFlag = false;
-    let startTime;
-
-    // DOM Elements
-    const sidebarConn = document.getElementById('sidebarConn');
-    const sidebarStatus = document.getElementById('sidebarStatus');
-    const consoleContent = document.getElementById('console-content');
-    const bleList = document.getElementById('bleList');
-    const fileListContainer = document.getElementById('fileList');
-    const dlStatus = document.getElementById('dlStatus');
-    const uploadStatus = document.getElementById('uploadStatus');
-
-    const buttons = {
-        scanBle: document.getElementById('btnScanBle'),
-        scanSerial: document.getElementById('btnScanSerial'),
-        disconnect: document.getElementById('btnDisconnect'),
-        refresh: document.getElementById('btnRefresh'),
-        download: document.getElementById('btnDownload'),
-        cancelDl: document.getElementById('btnCancelDownload'),
-        del: document.getElementById('btnDelete'),
-        startUpload: document.getElementById('btnStartUpload'),
-        stopUpload: document.getElementById('btnStopUpload'),
-        saveCfg: document.getElementById('btnSaveConfig'),
-        defCfg: document.getElementById('btnDefaultConfig'),
-        syncTime: document.getElementById('btnSyncTime')
-    };
-
-    function formatBytes(bytes) { if(bytes===0) return '0 Bytes'; const k=1024, sizes=['Bytes','KB','MB'], i=Math.floor(Math.log(bytes)/Math.log(k)); return parseFloat((bytes/Math.pow(k,i)).toFixed(2))+' '+sizes[i]; }
-
-    function logConsole(msg, type = 'log-info') {
-        const now = new Date();
-        const timeStr = now.toTimeString().split(' ')[0];
-        const div = document.createElement('div');
-        div.className = `log-entry ${type}`;
-        div.innerHTML = `<span class="log-time">[${timeStr}]</span> ${msg}`;
-        consoleContent.appendChild(div);
-        consoleContent.scrollTop = consoleContent.scrollHeight; 
-    }
-
-    function setGlobalStatus(msg) { sidebarStatus.innerText = msg; logConsole(msg); }
-
-    // --- BLUETOOTH LOGIC ---
-    buttons.scanBle.addEventListener('click', async () => {
-        try {
-            logConsole("Requesting Bluetooth Device...", 'log-warn');
-            device = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: "SuperMini" }, { namePrefix: "EchoLog" }], optionalServices: [SERVICE_UUID] });
-            bleList.innerText = "Connecting to " + device.name + "...";
-            device.addEventListener('gattserverdisconnected', () => onDisconnected('BLE'));
-            server = await device.gatt.connect();
-            service = await server.getPrimaryService(SERVICE_UUID);
-            cmdChar = await service.getCharacteristic(CHAR_CMD_UUID);
-            dataChar = await service.getCharacteristic(CHAR_DATA_UUID);
-            uploadChar = await service.getCharacteristic(CHAR_UPLOAD_UUID);
-            await dataChar.startNotifications();
-            dataChar.addEventListener('characteristicvaluechanged', (e) => handleIncomingData(e.target.value));
-            onConnected('BLE');
-        } catch (error) { logConsole(`BLE Error: ${error.message}`, 'log-error'); bleList.innerText = "Error: " + error.message; }
-    });
-
-    // --- SERIAL LOGIC ---
-    buttons.scanSerial.addEventListener('click', async () => {
-        try {
-            logConsole("Requesting Serial Device...", 'log-warn');
-            serialPort = await navigator.serial.requestPort();
-            await serialPort.open({ baudRate: 115200, bufferSize: 8192 });
-            onConnected('SERIAL');
-            readSerialLoop(); // Start continuous reading
-        } catch (error) { logConsole(`Serial Error: ${error.message}`, 'log-error'); bleList.innerText = "Error: " + error.message; }
-    });
-
-    async function readSerialLoop() {
-        while (serialPort.readable && currentConnection === 'SERIAL') {
-            serialReader = serialPort.readable.getReader();
-            try {
-                while (true) {
-                    const { value, done } = await serialReader.read();
-                    if (done) break;
-                    if (value) handleIncomingData(new DataView(value.buffer, value.byteOffset, value.byteLength));
-                }
-            } catch (error) { logConsole(`Serial Read Error: ${error}`, 'log-error'); onDisconnected('SERIAL');
-            } finally { serialReader.releaseLock(); }
-        }
-    }
-
-    // --- CONNECTION MANAGEMENT ---
-    function onConnected(type) {
-        currentConnection = type;
-        isConnected = true; 
-        sidebarConn.innerText = `Connected (${type})`; sidebarConn.style.color = "#4CAF50";
-        bleList.innerText = `Active: ${type === 'BLE' ? device.name : "USB Cable"}`; bleList.style.color = "#4CAF50";
-        
-        buttons.scanBle.style.display = 'none'; buttons.scanSerial.style.display = 'none'; 
-        buttons.disconnect.style.display = 'inline-block';
-        
-        buttons.refresh.disabled = false; buttons.download.disabled = false; buttons.del.disabled = false; buttons.startUpload.disabled = false; buttons.saveCfg.disabled = false; buttons.defCfg.disabled = false; buttons.syncTime.disabled = false;
-        setGlobalStatus(`Established ${type} connection.`);
-        refreshFileList();
-    }
-
-    async function onDisconnected(type) {
-        currentConnection = 'NONE';
-        isConnected = false; 
-        sidebarConn.innerText = "Disconnected"; sidebarConn.style.color = "#ffcccc";
-        bleList.innerText = "Not Connected"; bleList.style.color = "#555";
-        
-        buttons.scanBle.style.display = 'inline-block'; buttons.scanSerial.style.display = 'inline-block'; 
-        buttons.disconnect.style.display = 'none';
-        
-        Object.values(buttons).forEach(btn => { if (btn !== buttons.scanBle && btn !== buttons.scanSerial) btn.disabled = true; });
-        fileListContainer.innerHTML = "<div style='padding:5px;font-size:13px;'>Disconnected</div>";
-        setGlobalStatus(`Device disconnected.`);
-
-        if (type === 'SERIAL' && serialPort) { try { await serialPort.close(); } catch(e){} serialPort = null; }
-    }
-
-    buttons.disconnect.addEventListener('click', () => { 
-        if (currentConnection === 'BLE' && device && device.gatt.connected) device.gatt.disconnect(); 
-        else if (currentConnection === 'SERIAL') {
-            if(serialReader) serialReader.cancel(); 
-            else onDisconnected('SERIAL');
-        }
-    });
+    async function sCmd(c) { if(conn==='NONE')return; log(`TX: ${c}`,'warn'); if(conn==='BLE') await cChr.writeValue(new TextEncoder().encode(c)); else { const w=sPort.writable.getWriter(); await w.write(new TextEncoder().encode(c+'\n')); w.releaseLock(); } }
     
-    // --- COMMAND AND DATA HANDLING ---
-    async function sendCommand(cmd) { 
-        if (!isConnected) return; 
-        const enc = new TextEncoder(); 
-        logConsole(`Command Sent: ${cmd}`, 'log-warn');
-        if (currentConnection === 'BLE') { await cmdChar.writeValue(enc.encode(cmd)); } 
-        else if (currentConnection === 'SERIAL') {
-            const writer = serialPort.writable.getWriter();
-            await writer.write(enc.encode(cmd + '\n')); 
-            writer.releaseLock();
-        }
-    }
-
-    buttons.refresh.addEventListener('click', refreshFileList);
-
-    function refreshFileList() { 
-        fileListContainer.innerHTML = "<div style='padding:5px;font-size:13px;'>Scanning...</div>"; 
-        isDownloading = false; setGlobalStatus("Refreshing file list..."); sendCommand("ls"); 
-    }
-
-    function handleIncomingData(dataView) {
-        const value = dataView;
-        const decoder = new TextDecoder();
-        
-        if (value.byteLength < 20) { 
-            const str = decoder.decode(value);
-            if (str.includes("EOF")) { if (isDownloading) finishDownload(); return; }
-            if (str.includes("READY")) { processUploadStream(); return; }
-            if (str.includes("ERROR")) { uploadStatus.innerText = "Error: SD Error"; setGlobalStatus("SD Card Error encountered."); return; }
-            if (str.includes("SET:")) { setGlobalStatus("RTC Time Synced successfully."); return; }
-        }
-
-        if (!isDownloading && value.byteLength < 100) {
-            const str = decoder.decode(value);
-            if (str.includes("|")) {
-                const parts = str.split("|");
-                if(fileListContainer.innerHTML.includes("Scanning...")) fileListContainer.innerHTML = '';
-                const existing = document.getElementById('chk_' + parts[0]);
-                if(!existing) {
-                    const row = document.createElement("div"); row.style.padding = "5px"; row.style.fontSize = "13px"; row.style.borderBottom = "1px solid #eee";
-                    row.innerHTML = `<input type="checkbox" id="chk_${parts[0]}" value="${parts[0]}" data-size="${parts[1]}" style="margin-right:8px;"> <label for="chk_${parts[0]}">${parts[0]} (${formatBytes(parseInt(parts[1]))})</label>`;
-                    fileListContainer.appendChild(row);
-                }
-                return;
-            }
-        }
-        
-        if (isDownloading) {
-            if (stopDownloadFlag) return; 
-            const chunk = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-            fileBuffer.push(chunk);
-            downloadBytesReceived += chunk.length;
-            
-            if(Math.random() > 0.8) {
-                const elapsed = (Date.now() - startTime) / 1000;
-                const speed = downloadBytesReceived / Math.max(elapsed, 0.1);
-                dlStatus.innerHTML = `Downloading: ${formatBytes(downloadBytesReceived)} / ${formatBytes(downloadTotalSize)}<br>Speed: ${formatBytes(speed)}/s`;
-            }
-        }
-    }
-
-    // --- FILE TRANSFERS ---
-    let downloadTotalSize = 0, downloadBytesReceived = 0, fileSelectValue = "";
+    const refLs = () => { el('fileList').innerHTML="SCANNING..."; isDl=false; stat("FS_SCAN"); sCmd("ls"); };
+    el('btnRef').onclick = refLs;
     
-    buttons.download.addEventListener('click', () => {
-        const checkboxes = fileListContainer.querySelectorAll('input[type="checkbox"]:checked');
-        if (checkboxes.length === 0) { logConsole("Select a file to download.", 'log-error'); return; }
-        const selected = checkboxes[0]; 
-        downloadTotalSize = parseInt(selected.dataset.size || 0); downloadBytesReceived = 0;
-        fileBuffer = []; isDownloading = true; stopDownloadFlag = false; buttons.cancelDl.disabled = false;
-        startTime = Date.now(); dlStatus.innerText = "Requesting " + selected.value + "...";
-        setGlobalStatus(`Download started: ${selected.value}`); fileSelectValue = selected.value;
-        sendCommand("get " + selected.value);
-    });
-
-    buttons.cancelDl.addEventListener('click', () => {
-        if(isDownloading) { stopDownloadFlag = true; isDownloading = false; buttons.cancelDl.disabled = true; dlStatus.innerText = "Cancelled by user."; setGlobalStatus("Download cancelled."); }
-    });
-
-    function finishDownload() {
-        if (isDownloading && !stopDownloadFlag) {
-            const blob = new Blob(fileBuffer, { type: "application/octet-stream" });
-            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fileSelectValue; a.click();
-            isDownloading = false; buttons.cancelDl.disabled = true; dlStatus.innerText = "Download Complete!"; setGlobalStatus(`Download finished: ${fileSelectValue}`);
+    function hIn(dv) {
+        if(dv.byteLength<50) { const s=new TextDecoder().decode(dv);
+            if(s.startsWith("TEST|")) { const p=s.split("|"); if(p.length>=4) { const t=el(`test-${p[1]}`); if(t){ const d=t.querySelectorAll('.dot')[parseInt(p[2])-1]; if(d) d.classList.add(p[3].toLowerCase()); } stat(`DIAG:${p[1]}_${p[2]}->${p[3]}`); } return; }
+            if(s.includes("TEST_START")) { stat("DIAG_RUNNING"); return; }
+            if(s.includes("EOF")) { if(isDl) fnDl(); return; }
+            if(s.includes("READY")) { stUp(); return; }
+            if(s.includes("ERROR")) { el('upStatus').innerText="ERR: SD_FAULT"; stat("SD_ERR"); return; }
+            if(s.includes("SET:")) { stat("RTC_SYNC_OK"); return; }
         }
+        if(!isDl && dv.byteLength<100) { const s=new TextDecoder().decode(dv); if(s.includes("|")) { const p=s.split("|"); if(el('fileList').innerHTML.includes("SCANNING")) el('fileList').innerHTML=''; if(!el('c_'+p[0])) el('fileList').innerHTML+=`<div style="padding:4px;border-bottom:1px solid var(--border);"><input type="checkbox" id="c_${p[0]}" value="${p[0]}" data-s="${p[1]}"> <label for="c_${p[0]}">${p[0]} (${fmt(parseInt(p[1]))})</label></div>`; return; } }
+        if(isDl && !stopDl) { const c=new Uint8Array(dv.buffer,dv.byteOffset,dv.byteLength); fBuf.push(c); dlRec+=c.length; if(Math.random()>0.8) el('dlStatus').innerHTML=`RX: ${fmt(dlRec)}/${fmt(dlTot)}<br>SPD: ${fmt(dlRec/Math.max((Date.now()-tSt)/1000,0.1))}/s`; }
     }
 
-    let uploadFileObj;
-    document.getElementById('fileInput').addEventListener('change', (e) => {
-        if(e.target.files.length > 0) { uploadFileObj = e.target.files[0]; uploadStatus.innerHTML = `Ready: ${uploadFileObj.name}<br>Size: ${formatBytes(uploadFileObj.size)}`; }
-    });
+    el('btnDl').onclick = () => { const c=el('fileList').querySelectorAll('input:checked'); if(!c.length)return; dlTot=parseInt(c[0].dataset.s||0); dlRec=0; fBuf=[]; isDl=true; stopDl=false; el('btnCanDl').disabled=false; tSt=Date.now(); selF=c[0].value; stat(`PULL_REQ: ${selF}`); sCmd("get "+selF); };
+    el('btnCanDl').onclick = () => { if(isDl){stopDl=true;isDl=false;el('btnCanDl').disabled=true;stat("PULL_HALTED");} };
+    const fnDl = () => { if(isDl&&!stopDl){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(fBuf)); a.download=selF; a.click(); isDl=false; el('btnCanDl').disabled=true; stat(`PULL_OK: ${selF}`); } };
     
-    buttons.startUpload.addEventListener('click', () => {
-        if(!uploadFileObj) return; stopUploadFlag = false; buttons.stopUpload.disabled = false; uploadStatus.innerText = "Initializing SD Card...";
-        // For serial to avoid command/data collisions, we send the exact file size to the C code.
-        sendCommand(currentConnection === 'SERIAL' ? `upload ${uploadFileObj.name} ${uploadFileObj.size}` : `upload ${uploadFileObj.name}`);
-    });
-    
-    buttons.stopUpload.addEventListener('click', () => { stopUploadFlag = true; buttons.stopUpload.disabled = true; uploadStatus.innerText = "Stopping..."; });
-
-    async function processUploadStream() {
-        uploadStatus.innerText = "Starting Stream...";
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            const bytes = new Uint8Array(e.target.result); const total = bytes.length;
-            const CHUNK_SIZE = currentConnection === 'SERIAL' ? 2048 : 500; 
-            let offset = 0; startTime = Date.now();
-            
-            let writer = null; if (currentConnection === 'SERIAL') writer = serialPort.writable.getWriter();
-
-            while(offset < total) {
-                if(stopUploadFlag) { uploadStatus.innerText = "Upload Cancelled"; if(writer) writer.releaseLock(); return; }
-                const chunk = bytes.slice(offset, Math.min(offset + CHUNK_SIZE, total));
-                
-                if (currentConnection === 'BLE') await uploadChar.writeValue(chunk);
-                else await writer.write(chunk);
-                offset += chunk.length;
-                
-                if (offset % (CHUNK_SIZE*5) === 0 || offset === total) {
-                    const elapsed = (Date.now() - startTime) / 1000;
-                    uploadStatus.innerHTML = `Uploading: ${((offset/total)*100).toFixed(0)}% (${formatBytes(offset)}/${formatBytes(total)})<br>Speed: ${formatBytes(offset / Math.max(elapsed, 0.1))}/s`;
-                }
-            }
-            if(writer) writer.releaseLock();
-            if (currentConnection === 'BLE') await sendCommand("end_upload");
-            buttons.stopUpload.disabled = true; uploadStatus.innerText = "Upload Complete!"; setTimeout(refreshFileList, 1000);
-        };
-        reader.readAsArrayBuffer(uploadFileObj);
+    el('fIn').onchange = e => { if(e.target.files.length) { upF=e.target.files[0]; el('upStatus').innerHTML=`RDY: ${upF.name}<br>SZ: ${fmt(upF.size)}`; } };
+    el('btnUp').onclick = () => { if(!upF)return; stopUp=false; el('btnStopUp').disabled=false; el('upStatus').innerText="INIT_SD..."; sCmd(conn==='SERIAL'?`upload ${upF.name} ${upF.size}`:`upload ${upF.name}`); };
+    el('btnStopUp').onclick = () => { stopUp=true; el('btnStopUp').disabled=true; };
+    async function stUp() {
+        const r=new FileReader(); r.onload=async e=>{ const b=new Uint8Array(e.target.result), t=b.length, cS=conn==='SERIAL'?2048:500; let o=0, w=conn==='SERIAL'?sPort.writable.getWriter():null; tSt=Date.now();
+            while(o<t) { if(stopUp){if(w)w.releaseLock();stat("PUSH_HALTED");return;} const c=b.slice(o,Math.min(o+cS,t)); if(conn==='BLE') await uChr.writeValue(c); else await w.write(c); o+=c.length; if(o%(cS*5)===0||o===t) el('upStatus').innerHTML=`TX: ${Math.round(o/t*100)}% (${fmt(o)}/${fmt(t)})<br>SPD: ${fmt(o/Math.max((Date.now()-tSt)/1000,0.1))}/s`; }
+            if(w)w.releaseLock(); if(conn==='BLE') await sCmd("end_upload"); el('btnStopUp').disabled=true; stat("PUSH_OK"); setTimeout(refLs,1000); }; r.readAsArrayBuffer(upF);
     }
 
-    // --- UTILITIES ---
-    buttons.syncTime.addEventListener('click', async () => { const now = new Date(); sendCommand(`time ${now.getFullYear()} ${now.getMonth() + 1} ${now.getDate()} ${now.getHours()} ${now.getMinutes()} ${now.getSeconds()}`); });
-    buttons.del.addEventListener('click', async () => {
-        const checkboxes = fileListContainer.querySelectorAll('input[type="checkbox"]:checked');
-        for (let chk of checkboxes) { await sendCommand("del " + chk.value); await new Promise(r => setTimeout(r, 200)); }
-        refreshFileList();
-    });
-    buttons.saveCfg.addEventListener('click', async () => {
-        await sendCommand(`cfg_rec ${document.getElementById('recLengthSlider').value}`); await new Promise(r => setTimeout(r, 200));
-        await sendCommand(`cfg_acc ${document.getElementById('actThresh').value} ${document.getElementById('actTime').value} ${document.getElementById('inaThresh').value} ${document.getElementById('inaTime').value}`);
-        setGlobalStatus("Configuration saved.");
-    });
-    buttons.defCfg.addEventListener('click', async () => {
-        document.getElementById('recLengthSlider').value = 30; document.getElementById('sVal').innerText = "30s";
-        document.getElementById('actThresh').value = 1800; document.getElementById('actTime').value = 10;
-        document.getElementById('inaThresh').value = 1500; document.getElementById('inaTime').value = 10;
-        await sendCommand(`cfg_rec 30`); await new Promise(r => setTimeout(r, 200));
-        await sendCommand(`cfg_acc 1800 10 1500 10`); setGlobalStatus("Defaults restored.");
-    });
+    el('btnDel').onclick = async () => { for(let c of el('fileList').querySelectorAll('input:checked')) { await sCmd("del "+c.value); await new Promise(r=>setTimeout(r,200)); } refLs(); };
+    el('btnSv').onclick = async () => { await sCmd(`cfg_rec ${el('rLen').value}`); await new Promise(r=>setTimeout(r,200)); await sCmd(`cfg_acc ${el('aTh').value} ${el('aTi').value} ${el('iTh').value} ${el('iTi').value}`); stat("NVS_WRITTEN."); };
+    el('btnDef').onclick = async () => { el('rLen').value=30; el('sVal').innerText="30"; el('aTh').value=1800; el('aTi').value=10; el('iTh').value=1500; el('iTi').value=10; await sCmd(`cfg_rec 30`); await new Promise(r=>setTimeout(r,200)); await sCmd(`cfg_acc 1800 10 1500 10`); stat("NVS_RST."); };
+    el('btnRtc').onclick = () => { const n=new Date(); sCmd(`time ${n.getFullYear()} ${n.getMonth()+1} ${n.getDate()} ${n.getHours()} ${n.getMinutes()} ${n.getSeconds()}`); };
+    setInterval(() => fetch('/ping').catch(() => {}), 2000);
 </script>
 </body>
 </html>

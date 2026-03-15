@@ -47,6 +47,7 @@
 #include "globals.h"
 #include "rtc_module.h"
 #include "config_manager.h"
+#include "self_test.h"
 
 #define MOUNT_POINT "/sdcard"
 #define TRANSFER_BLOCK_SIZE 490
@@ -129,6 +130,7 @@ void process_command_task(void *pvParameters) {
             else if(!strncmp(pending_cmd, "cfg_rec ", 8)) { device_config_t cfg; load_config(&cfg); cfg.record_length_sec = atoi(pending_cmd+8); save_config(&cfg); send_eof(); }
             else if(!strncmp(pending_cmd, "cfg_acc ", 8)) { device_config_t cfg; load_config(&cfg); sscanf(pending_cmd+8, "%hu %hu %hu %hu", &cfg.accel_act_thresh, &cfg.accel_act_time, &cfg.accel_inact_thresh, &cfg.accel_inact_time); save_config(&cfg); send_eof(); }
             else if(!strncmp(pending_cmd, "time ", 5)) { int y, m, d, hh, mm, ss; if(sscanf(pending_cmd+5, "%d %d %d %d %d %d", &y, &m, &d, &hh, &mm, &ss)==6) { rtc_set_time_manual(y, m, d, hh, mm, ss); send_notification((uint8_t*)"SET:OK", 6); } else { send_notification((uint8_t*)"TIME_ERR", 8); } send_eof(); }
+            else if(!strcmp(pending_cmd, "selftest")) { send_notification((uint8_t*)"TEST_START", 10); run_self_test(); send_eof(); }
             cmd_ready = false;
         }
         if(is_downloading && device_connected && transfer_file) {

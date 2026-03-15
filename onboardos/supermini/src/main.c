@@ -65,6 +65,7 @@ void persistent_led_task(void *pvParameters) {
             case LED_REC_ACTIVE: led_strip_set_pixel(led_strip, 0, 50, 0, 0); led_strip_refresh(led_strip); vTaskDelay(pdMS_TO_TICKS(250)); break;
             case LED_REC_ERROR: led_strip_set_pixel(led_strip, 0, 50, 50, 50); led_strip_refresh(led_strip); vTaskDelay(pdMS_TO_TICKS(1500)); sys_led_state = LED_REC_IDLE; break;
             case LED_SYS_FLOATING: led_strip_set_pixel(led_strip, 0, 50, 50, 50); led_strip_refresh(led_strip); vTaskDelay(pdMS_TO_TICKS(150)); led_strip_clear(led_strip); led_strip_refresh(led_strip); vTaskDelay(pdMS_TO_TICKS(150)); break;
+            case LED_SELF_TEST: led_strip_set_pixel(led_strip, 0, 50, 0, 50); led_strip_refresh(led_strip); vTaskDelay(pdMS_TO_TICKS(250)); break;
         }
     }
 }

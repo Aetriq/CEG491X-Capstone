@@ -48,7 +48,7 @@
 #define RGB_LED_PIN       GPIO_NUM_48
 
 /* ==================== 3.0 External Variables & Enums ==================== */
-typedef enum { LED_IDLE, LED_BT_UNPAIRED, LED_BT_PAIRED, LED_BT_DISCONNECTING, LED_REC_IDLE, LED_REC_STARTUP, LED_REC_ACTIVE, LED_REC_ERROR, LED_SYS_FLOATING } led_state_t;
+typedef enum { LED_IDLE, LED_BT_UNPAIRED, LED_BT_PAIRED, LED_BT_DISCONNECTING, LED_REC_IDLE, LED_REC_STARTUP, LED_REC_ACTIVE, LED_REC_ERROR, LED_SYS_FLOATING, LED_SELF_TEST } led_state_t;
 typedef enum { MODE_SLEEP, MODE_BLUETOOTH, MODE_RECORDING, MODE_FLOATING } system_mode_t;
 
 extern volatile led_state_t sys_led_state;
