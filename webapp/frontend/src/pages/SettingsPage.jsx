@@ -1,10 +1,27 @@
+// CEG491X-Capstone/webapp/Frontend/src/pages/SettingsPage.jsx
+
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next'; // NEW
 import './SettingsPage.css';
 import axios from 'axios';
 
 const API_URL = '/api';
 
 const SettingsPage = ({ onBack }) => {
+  const { t, i18n } = useTranslation(); // NEW
+  const codeToName = {
+  'en': 'English',
+  'fr': 'French',
+  'es': 'Spanish',
+  'zh': 'Chinese'
+  };
+
+const nameToCode = {
+  'English': 'en',
+  'French': 'fr',
+  'Spanish': 'es',
+  'Chinese': 'zh'
+  };
   const [settings, setSettings] = useState({
     deviceName: 'EchoLog-01',
     recordingLength: 60,
@@ -12,7 +29,7 @@ const SettingsPage = ({ onBack }) => {
     gpsEnabled: true,
     notifications: true,
     theme: 'Light',
-    language: 'English',
+    language: 'en', // Use language codes (en, fr, es)
     activityThreshold: 1800,
     activityTime: 10,
     inactivityThreshold: 1500,
@@ -20,13 +37,24 @@ const SettingsPage = ({ onBack }) => {
   });
   const [loading, setLoading] = useState(true);
 
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const res = await axios.get(`${API_URL}/settings/me`);
         if (!cancelled && res.data && res.data.settings) {
-          setSettings(prev => ({ ...prev, ...res.data.settings }));
+          const apiSettings = res.data.settings;
+          const mappedLanguage = nameToCode[apiSettings.language] || 'en';
+          setSettings(prev => ({
+            ...prev,
+            ...apiSettings,
+            language: mappedLanguage
+          }));
+          // ONLY change language if it differs from current AND wasn't manually set
+          if (i18n.language !== mappedLanguage && !localStorage.getItem('i18nextLng')) {
+            i18n.changeLanguage(mappedLanguage);
+          }
         }
       } catch (err) {
         console.error('Error loading settings:', err);
@@ -34,35 +62,56 @@ const SettingsPage = ({ onBack }) => {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    return () => { cancelled = true; };
+  }, [i18n]);
 
-  // Apply dark mode class when theme is Dark and persist in localStorage
+  // Apply dark mode when theme changes
   useEffect(() => {
     if (settings.theme === 'Dark') {
       document.body.classList.add('dark-mode');
-      try {
-        localStorage.setItem('theme', 'Dark');
-      } catch {}
+      localStorage.setItem('theme', 'Dark');
     } else {
       document.body.classList.remove('dark-mode');
-      try {
-        localStorage.setItem('theme', 'Light');
-      } catch {}
+      localStorage.setItem('theme', 'Light');
     }
   }, [settings.theme]);
 
+
+
   const handleSave = async () => {
     try {
-      await axios.put(`${API_URL}/settings/me`, settings);
-      console.log('Saving settings:', settings);
-      alert('Settings saved successfully!');
+      const settingsToSend = {
+        ...settings,
+        language: codeToName[settings.language] || 'English'
+      };
+      await axios.put(`${API_URL}/settings/me`, settingsToSend);
+      
+      // Show confirmation with current language
+      alert(i18n.t('settingsSaved')); // This will now use the NEW language
+      
+      // Force re-render to apply translations immediately
+      window.location.reload(); // Optional: ensures all components re-render with new language
     } catch (err) {
       console.error('Error saving settings:', err);
-      alert('Failed to save settings: ' + (err.response?.data?.error || err.message));
+      alert(i18n.t('errorSaving') + ': ' + (err.response?.data?.error || err.message));
     }
+  };
+
+  useEffect(() => {
+    console.log('=== i18n Debug ===');
+    console.log('i18n initialized:', i18n.isInitialized);
+    console.log('Current language:', i18n.language);
+    console.log('Available languages:', Object.keys(i18n.services?.resourceStore?.data || {}));
+    console.log('Sample translation:', i18n.t('appName'));
+  }, [i18n]);
+
+  const handleLanguageChange = (e) => {
+    const newLang = e.target.value;
+    // Save first
+    localStorage.setItem('i18nextLng', newLang);
+    setSettings({ ...settings, language: newLang });
+    // Then change
+    i18n.changeLanguage(newLang);
   };
 
   if (loading) {
@@ -70,10 +119,10 @@ const SettingsPage = ({ onBack }) => {
       <div className="settings-container">
         <div className="settings-header">
           <button className="back-btn" onClick={onBack}>
-            ← Back
+            ← {t('back')}
           </button>
-          <h1>Configuration Settings</h1>
-          <p className="subtitle">Loading settings…</p>
+          <h1>{t('settings')}</h1>
+          <p className="subtitle">{t('configurePreferences')}</p>
         </div>
       </div>
     );
@@ -83,18 +132,18 @@ const SettingsPage = ({ onBack }) => {
     <div className="settings-container">
       <div className="settings-header">
         <button className="back-btn" onClick={onBack}>
-          ← Back
+          ← {t('back')}
         </button>
-        <h1>Configuration Settings</h1>
-        <p className="subtitle">Manage device parameters and preferences</p>
+        <h1>{t('settings')}</h1>
+        <p className="subtitle">{t('configurePreferences')}</p>
       </div>
 
       <div className="settings-grid">
         <div className="settings-card">
-          <h3>Device Settings</h3>
+          <h3>{t('deviceSettings')}</h3>
 
           <div className="form-group">
-            <label>Device Name</label>
+            <label>{t('deviceName')}</label>
             <input
               type="text"
               value={settings.deviceName}
@@ -103,7 +152,7 @@ const SettingsPage = ({ onBack }) => {
           </div>
 
           <div className="form-group">
-            <label>Audio Recording Length (s): {settings.recordingLength}s</label>
+            <label>{t('recordingLength')}: {settings.recordingLength}s</label>
             <input
               type="range"
               min="10"
@@ -120,7 +169,7 @@ const SettingsPage = ({ onBack }) => {
           </div>
 
           <div className="form-group">
-            <label>Activity Threshold</label>
+            <label>{t('activityThreshold')}</label>
             <input
               type="number"
               value={settings.activityThreshold}
@@ -131,7 +180,7 @@ const SettingsPage = ({ onBack }) => {
           </div>
 
           <div className="form-group">
-            <label>Activity Time (ms)</label>
+            <label>{t('activityTime')} (ms)</label>
             <input
               type="number"
               value={settings.activityTime}
@@ -142,7 +191,7 @@ const SettingsPage = ({ onBack }) => {
           </div>
 
           <div className="form-group">
-            <label>Inactivity Threshold</label>
+            <label>{t('inactivityThreshold')}</label>
             <input
               type="number"
               value={settings.inactivityThreshold}
@@ -156,7 +205,7 @@ const SettingsPage = ({ onBack }) => {
           </div>
 
           <div className="form-group">
-            <label>Inactivity Time (ms)</label>
+            <label>{t('inactivityTime')} (ms)</label>
             <input
               type="number"
               value={settings.inactivityTime}
@@ -171,7 +220,7 @@ const SettingsPage = ({ onBack }) => {
         </div>
 
         <div className="settings-card">
-          <h3>Application Settings</h3>
+          <h3>{t('appSettings')}</h3>
 
           <div className="form-group checkbox-group">
             <label>
@@ -182,7 +231,7 @@ const SettingsPage = ({ onBack }) => {
                   setSettings({ ...settings, notifications: e.target.checked })
                 }
               />
-              Enable notifications
+              {t('notifications')}
             </label>
           </div>
 
@@ -198,51 +247,52 @@ const SettingsPage = ({ onBack }) => {
                   })
                 }
               />
-              Enable dark mode
+              {t('dark')} (Dark mode)
             </label>
           </div>
 
           <div className="form-group">
-            <label>Language</label>
+            <label>{t('language')}</label>
             <select
               value={settings.language}
-              onChange={(e) => setSettings({ ...settings, language: e.target.value })}
+              onChange={handleLanguageChange}
             >
-              <option>English</option>
-              <option>French</option>
-              <option>Spanish</option>
+              <option value="en">{t('english')}</option>
+              <option value="fr">{t('french')}</option>
+              <option value="es">{t('spanish')}</option>
+              <option value="zh">中文</option>
             </select>
           </div>
         </div>
 
         <div className="settings-card">
-          <h3>Advanced</h3>
+          <h3>{t('advanced')}</h3>
 
           <div className="warning-section">
-            <p className="warning-text">⚠️ Advanced settings - proceed with caution</p>
+            <p className="warning-text">{t('advancedWarning')}</p>
 
             <button
               className="btn btn-warning"
               type="button"
-              onClick={() => alert('Factory reset not implemented yet.')}
+              onClick={() => alert(t('factoryReset') + ' not implemented yet.')}
             >
-              Factory Reset Device
+              {t('factoryReset')}
             </button>
 
             <button
               className="btn btn-danger"
               type="button"
-              onClick={() => alert('Clear all data not implemented yet.')}
+              onClick={() => alert(t('clearAllData') + ' not implemented yet.')}
             >
-              Clear All Data
+              {t('clearAllData')}
             </button>
 
             <button
               className="btn btn-secondary"
               type="button"
-              onClick={() => alert('Export configuration not implemented yet.')}
+              onClick={() => alert(t('exportConfig') + ' not implemented yet.')}
             >
-              Export Configuration
+              {t('exportConfig')}
             </button>
           </div>
         </div>
@@ -250,10 +300,10 @@ const SettingsPage = ({ onBack }) => {
 
       <div className="settings-actions">
         <button className="btn btn-secondary" onClick={onBack}>
-          Cancel
+          {t('cancel')}
         </button>
         <button className="btn btn-primary" onClick={handleSave}>
-          Save Settings
+          {t('save')}
         </button>
       </div>
     </div>
@@ -261,4 +311,3 @@ const SettingsPage = ({ onBack }) => {
 };
 
 export default SettingsPage;
-

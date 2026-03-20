@@ -1,4 +1,6 @@
-﻿const { db } = require('../database/db');
+﻿// CEG491X-Capstone/webapp/Backend/models/User.js
+
+const { db } = require('../database/db');
 const bcrypt = require('bcryptjs');
 
 class User {

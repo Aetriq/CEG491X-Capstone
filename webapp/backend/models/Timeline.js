@@ -1,4 +1,4 @@
-/*CEG491X-Capstone/webapp/Backend/models/Timeline.js*/
+// CEG491X-Capstone/webapp/Backend/models/Timeline.js 
 
 const { db } = require('../database/db');
 

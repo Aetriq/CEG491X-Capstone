@@ -1,6 +1,9 @@
+// CEG491X-Capstone/webapp/Frontend/src/pages/TimelineView.jsx
+
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useTranslation } from 'react-i18next'; // NEW: i18n
 import axios from 'axios';
 import AudioPlayer from '../components/AudioPlayer';
 import './TimelineView.css';
@@ -8,7 +11,6 @@ import './TimelineView.css';
 const API_URL = '/api';
 const CACHE_KEY_PREFIX = 'echolog_timeline_';
 
-/** Parse event.time (e.g. "14:30" or "14:30:00") to minutes-from-midnight for sorting. */
 function parseTimeToMinutes(timeStr) {
   if (!timeStr || typeof timeStr !== 'string') return 0;
   const parts = timeStr.trim().split(':').map(Number);
@@ -21,7 +23,6 @@ function parseTimeToMinutes(timeStr) {
   return 0;
 }
 
-/** Sort events from earliest to latest by time, then renumber so Event column follows time order. */
 function sortEventsEarliestToLatest(events) {
   if (!Array.isArray(events) || events.length === 0) return events;
   if (events.length === 1) {
@@ -38,7 +39,6 @@ function sortEventsEarliestToLatest(events) {
   return sorted.map((ev, i) => ({ ...ev, event_number: i + 1 }));
 }
 
-/** Format a Day/Month label from an ISO datetime string. */
 function formatDayMonth(isoString) {
   if (!isoString) return '';
   const d = new Date(isoString);
@@ -52,6 +52,7 @@ function TimelineView() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { t } = useTranslation(); // NEW: i18n
   const [timeline, setTimeline] = useState(null);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -126,23 +127,19 @@ function TimelineView() {
       link.remove();
     } catch (error) {
       console.error('Error exporting timeline:', error);
-      alert('Error exporting timeline: ' + (error.response?.data?.error || error.message));
+      alert(t('exportError') + ': ' + (error.response?.data?.error || error.message));
     }
   };
 
   const handleSave = async () => {
     try {
       const response = await axios.post(`${API_URL}/timelines/${id}/save`);
-      alert(response.data.message || 'Timeline saved successfully');
+      alert(response.data.message || t('timelineSaved'));
     } catch (error) {
       console.error('Error saving timeline:', error);
-      alert('Error saving timeline: ' + (error.response?.data?.error || error.message));
+      alert(t('saveError') + ': ' + (error.response?.data?.error || error.message));
     }
   };
-
-  // Legacy /draft/ flows used a manual "Save to database" button.
-  // With authenticated transcription, timelines are saved automatically,
-  // so we no longer expose a separate save-to-DB action in the UI.
 
   const handleEdit = (event) => {
     setEditingEvent(event.id);
@@ -167,7 +164,7 @@ function TimelineView() {
       setEditForm({});
     } catch (error) {
       console.error('Error updating event:', error);
-      alert('Error updating event');
+      alert(t('updateError'));
     }
   };
 
@@ -184,11 +181,11 @@ function TimelineView() {
   };
 
   if (loading) {
-    return <div className="loading">Loading timeline...</div>;
+    return <div className="loading">{t('loading')}</div>;
   }
 
   if (!timeline) {
-    return <div className="error">Timeline not found</div>;
+    return <div className="error">{t('timelineNotFound')}</div>;
   }
 
   return (
@@ -198,7 +195,7 @@ function TimelineView() {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M15 18l-6-6 6-6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          Main Menu
+          {t('mainMenu')}
         </button>
         <button onClick={handleExport} className="download-btn">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -206,7 +203,7 @@ function TimelineView() {
             <path d="M8 11l4 4 4-4" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             <path d="M21 21H3" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          Download CSV
+          {t('exportCSV')}
         </button>
       </div>
 
@@ -214,7 +211,7 @@ function TimelineView() {
         <main className="content">
           <div className="header-row">
             <div>
-              <div className="title">Event Log</div>
+              <div className="title">{t('eventLog')}</div>
             </div>
           </div>
 
@@ -223,12 +220,12 @@ function TimelineView() {
               <table>
                 <thead>
                   <tr>
-                    <th style={{width: '56px'}}>Event</th>
-                    <th style={{width: '88px'}}>Time</th>
-                    <th>Transcript</th>
-                    <th style={{width: '220px'}}>Position</th>
-                    <th style={{width: '220px', textAlign: 'right'}}>Audio</th>
-                    <th style={{width: '100px'}}>Actions</th>
+                    <th style={{width: '56px'}}>{t('event')}</th>
+                    <th style={{width: '88px'}}>{t('time')}</th>
+                    <th>{t('transcript')}</th>
+                    <th style={{width: '220px'}}>{t('position')}</th>
+                    <th style={{width: '220px', textAlign: 'right'}}>{t('audio')}</th>
+                    <th style={{width: '100px'}}>{t('actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -250,7 +247,7 @@ function TimelineView() {
                             rows="2"
                           />
                         ) : (
-                          event.transcript || 'No transcript'
+                          event.transcript || t('noTranscript')
                         )}
                       </td>
                       <td className="position">
@@ -265,17 +262,17 @@ function TimelineView() {
                             audioFilePath={event.audio_file_path || event.audioFilePath}
                           />
                         ) : (
-                          <span className="no-audio">No audio</span>
+                          <span className="no-audio">{t('noAudio')}</span>
                         )}
                       </td>
                       <td>
                         {editingEvent === event.id ? (
                           <div className="edit-actions">
-                            <button onClick={() => handleSaveEdit(event.id)} className="btn-save">Save</button>
-                            <button onClick={handleCancelEdit} className="btn-cancel">Cancel</button>
+                            <button onClick={() => handleSaveEdit(event.id)} className="btn-save">{t('save')}</button>
+                            <button onClick={handleCancelEdit} className="btn-cancel">{t('cancel')}</button>
                           </div>
                         ) : (
-                          <button onClick={() => handleEdit(event)} className="btn-edit">Edit</button>
+                          <button onClick={() => handleEdit(event)} className="btn-edit">{t('edit')}</button>
                         )}
                       </td>
                     </tr>
@@ -286,10 +283,6 @@ function TimelineView() {
           </div>
         </main>
       </div>
-      
-      {/* Timelines created while logged in are saved into the database automatically.
-          The old explicit "Save to database" / "Save Timeline" buttons have been removed
-          to simplify the UX. */}
     </div>
   );
 }

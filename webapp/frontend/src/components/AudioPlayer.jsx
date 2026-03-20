@@ -1,3 +1,5 @@
+// CEG491X-Capstone/webapp/Frontend/src/components/AudioPlayer.jsx
+
 import React, { useState, useRef, useEffect } from 'react';
 import './AudioPlayer.css';
 

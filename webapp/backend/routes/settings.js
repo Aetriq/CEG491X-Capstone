@@ -1,3 +1,5 @@
+// CEG491X-Capstone/webapp/Backend/routes/settings.js
+
 const express = require('express');
 const router = express.Router();
 const { verifyToken } = require('../middleware/auth');
@@ -10,7 +12,7 @@ const DEFAULTS = {
   gps_enabled: 1,
   notifications: 1,
   theme: 'Light',
-  language: 'English'
+  language: 'en'   // ← change from 'English'
 };
 
 function rowToSettings(row) {
@@ -97,4 +99,3 @@ router.put('/me', verifyToken, (req, res) => {
 });
 
 module.exports = router;
-

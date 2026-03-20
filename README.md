@@ -73,4 +73,3 @@ Based on the needs of our client, EchoLog is designed to be applicable with simi
 
 ## Steps to Install
 TBD
-
