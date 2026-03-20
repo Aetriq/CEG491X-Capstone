@@ -67,11 +67,12 @@
         </div>
         <div class="card full"><div class="card-hdr"><i class="fas fa-stethoscope"></i><h3>Hardware Diagnostics</h3></div>
             <div style="color:var(--err); margin-bottom:10px;">WARNING: DO NOT INTERRUPT OPERATIONS DURING TEST!</div><button class="btn" id="btnTest" disabled>RUN COMPONENT SELF-TEST</button>
-            <div style="display:flex; gap:10px; margin-top:15px;">
+            <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:15px;">
                 <div class="test-item" id="test-SD">SD_SPI<div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
                 <div class="test-item" id="test-ADXL">ADXL_SPI<div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
-                <div class="test-item" id="test-MIC">I2S_RX<div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
-                <div class="test-item" id="test-RTC">I2C_MST<div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
+                <div class="test-item" id="test-MIC">MIC_I2S<div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
+                <div class="test-item" id="test-RTC">RTC_I2C<div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
+                <div class="test-item" id="test-GPS">GPS_I2C<div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
             </div>
         </div>
     </div></div>

@@ -34,6 +34,7 @@
 #include "driver/i2s_std.h"
 #include "driver/i2c.h"
 #include "globals.h"
+#include "esp_log.h"
 #include "self_test.h"
 
 extern esp_err_t send_notification(uint8_t *data, size_t len);
@@ -47,9 +48,11 @@ static void send_test_result(const char* comp, int attempt, const char* res) {
 /* ==================== 2.0 Self Test Routine ==================== */
 void run_self_test(void) {
     sys_led_state = LED_SELF_TEST; 
-    const char* comps[] = {"SD", "ADXL", "MIC", "RTC"};
+    // ADDED "GPS" to the end of the array
+    const char* comps[] = {"SD", "ADXL", "MIC", "RTC", "GPS"};
     
-    for (int c = 0; c < 4; c++) {
+    // INCREASED loop boundary from 4 to 5
+    for (int c = 0; c < 5; c++) {
         for (int i = 1; i <= 3; i++) {
             bool pass = true;
 
@@ -91,7 +94,7 @@ void run_self_test(void) {
                 } else pass = false;
             } 
             else if (c == 3) {
-                // RTC I2C: Actually check the ACK/NACK response from the module
+                // RTC I2C: Check ACK from 0x68 on I2C_NUM_0
                 i2c_config_t conf = { .mode = I2C_MODE_MASTER, .sda_io_num = I2C_MASTER_SDA_IO, .sda_pullup_en = 1, .scl_io_num = I2C_MASTER_SCL_IO, .scl_pullup_en = 1, .master.clk_speed = 100000 };
                 i2c_param_config(I2C_NUM_0, &conf); i2c_driver_install(I2C_NUM_0, conf.mode, 0, 0, 0);
                 uint8_t data; i2c_cmd_handle_t cmd = i2c_cmd_link_create();
@@ -101,11 +104,26 @@ void run_self_test(void) {
                 if(ret != ESP_OK) pass = false;
                 i2c_cmd_link_delete(cmd); i2c_driver_delete(I2C_NUM_0);
             }
+            else if (c == 4) {
+                // Permanently gag the logger to prevent UART0 deadlock on pins 43/44
+                esp_log_level_set("*", ESP_LOG_NONE); 
+
+                i2c_config_t conf_gps = { .mode = I2C_MODE_MASTER, .sda_io_num = I2C_GPS_SDA_IO, .sda_pullup_en = 1, .scl_io_num = I2C_GPS_SCL_IO, .scl_pullup_en = 1, .master.clk_speed = 100000 };
+                i2c_param_config(I2C_NUM_1, &conf_gps); i2c_driver_install(I2C_NUM_1, conf_gps.mode, 0, 0, 0);
+                i2c_cmd_handle_t cmd_gps = i2c_cmd_link_create();
+                i2c_master_start(cmd_gps); i2c_master_write_byte(cmd_gps, (0x10 << 1) | I2C_MASTER_WRITE, true); i2c_master_stop(cmd_gps);
+                esp_err_t ret_gps = i2c_master_cmd_begin(I2C_NUM_1, cmd_gps, 100 / portTICK_PERIOD_MS); 
+                if(ret_gps != ESP_OK) pass = false;
+                i2c_cmd_link_delete(cmd_gps); i2c_driver_delete(I2C_NUM_1);
+
+                // DO NOT UN-GAG THE LOGGER!
+            }
 
             send_test_result(comps[c], i, pass ? "PASS" : "FAIL");
             if (i < 3) vTaskDelay(pdMS_TO_TICKS(1000));
         }
-        if (c < 3) vTaskDelay(pdMS_TO_TICKS(2000));
+        // INCREASED bounds check from 3 to 4
+        if (c < 4) vTaskDelay(pdMS_TO_TICKS(2000));
     }
     
     sys_led_state = LED_BT_PAIRED;

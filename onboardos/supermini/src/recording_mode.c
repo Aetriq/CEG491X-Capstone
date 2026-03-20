@@ -44,6 +44,7 @@
 #include "globals.h"
 #include "rtc_module.h"
 #include "config_manager.h"
+#include "gps_module.h"
 
 #define MOUNT_POINT "/sdcard"
 #define SAMPLE_RATE 16000
@@ -115,7 +116,7 @@ void init_mic() {
 
 /* ==================== 4.0 Recording Mode Main ==================== */
 void recording_mode_main(void) {
-    rtc_init_and_sync(); init_mic(); device_config_t cfg; load_config(&cfg);
+    rtc_init_and_sync(); init_mic(); gps_init(); device_config_t cfg; load_config(&cfg);
     while(get_system_mode() == MODE_RECORDING) {
         sys_led_state = LED_REC_IDLE; init_adxl(&cfg); bool triggered = false;
         while(get_system_mode() == MODE_RECORDING) {
@@ -135,8 +136,9 @@ void recording_mode_main(void) {
             if(!init_sd_card()) { sys_led_state = LED_REC_ERROR; vTaskDelay(pdMS_TO_TICKS(1500)); continue; }
             sys_led_state = LED_REC_ACTIVE;
             
-            char filename[64]; time_t now; struct tm ti; time(&now); localtime_r(&now, &ti);
-            snprintf(filename, sizeof(filename), "%s/%04d%02d%02d_%02d%02d%02d.wav", MOUNT_POINT, ti.tm_year+1900, ti.tm_mon+1, ti.tm_mday, ti.tm_hour, ti.tm_min, ti.tm_sec);
+            char filename[128]; time_t now; struct tm ti; time(&now); localtime_r(&now, &ti);            
+            char gps_str[32]; gps_get_coords_str(gps_str);
+            snprintf(filename, sizeof(filename), "%s/%04d%02d%02d_%02d%02d%02d_%s.wav", MOUNT_POINT, ti.tm_year+1900, ti.tm_mon+1, ti.tm_mday, ti.tm_hour, ti.tm_min, ti.tm_sec, gps_str);            
             FILE *f = fopen(filename, "wb");
             if(f) {
                 write_wav_header(f, 0); int32_t *i2s_buf = calloc(SAMPLES_PER_READ, 4); int16_t *wav_buf = calloc(SAMPLES_PER_READ, 2); size_t br = 0; uint32_t tot_bytes = 0;
@@ -152,6 +154,7 @@ void recording_mode_main(void) {
             deinit_sd_card();
         }
     }
-    i2s_channel_disable(g_rx_handle); i2s_del_channel(g_rx_handle); 
+    i2s_channel_disable(g_rx_handle); i2s_del_channel(g_rx_handle);
+    gps_deinit(); 
     return;
 }

@@ -46,6 +46,8 @@
 #define I2C_MASTER_SDA_IO GPIO_NUM_13
 #define I2C_MASTER_SCL_IO GPIO_NUM_2
 #define RGB_LED_PIN       GPIO_NUM_48
+#define I2C_GPS_SDA_IO    GPIO_NUM_43
+#define I2C_GPS_SCL_IO    GPIO_NUM_44
 
 /* ==================== 3.0 External Variables & Enums ==================== */
 typedef enum { LED_IDLE, LED_BT_UNPAIRED, LED_BT_PAIRED, LED_BT_DISCONNECTING, LED_REC_IDLE, LED_REC_STARTUP, LED_REC_ACTIVE, LED_REC_ERROR, LED_SYS_FLOATING, LED_SELF_TEST } led_state_t;
