@@ -183,6 +183,20 @@ function TimelineView() {
     return `${Math.abs(lat).toFixed(2)}° ${latDir}\n${Math.abs(lon).toFixed(2)}° ${lonDir}`;
   };
 
+  //Returns JSON with format {place_name, coordinates, type}
+  //WIP update to accept language
+  const reverseGeocode = async (lat, long) =>{
+    const response = await axios.get(`${API_URL}/reverseGeocode/${lat}&${long}`);
+    return response;
+  }
+
+  const getLocation = (lat, lon) => {
+    const searchResponse = reverseGeocode(lat, lon);
+
+    //WIP get location estimates
+    return searchResponse.place_name;
+  }
+
   if (loading) {
     return <div className="loading">Loading timeline...</div>;
   }
@@ -226,7 +240,7 @@ function TimelineView() {
                     <th style={{width: '56px'}}>Event</th>
                     <th style={{width: '88px'}}>Time</th>
                     <th>Transcript</th>
-                    <th style={{width: '220px'}}>Position</th>
+                    <th style={{width: '220px'}}>Location</th>
                     <th style={{width: '220px', textAlign: 'right'}}>Audio</th>
                     <th style={{width: '100px'}}>Actions</th>
                   </tr>
@@ -254,9 +268,9 @@ function TimelineView() {
                         )}
                       </td>
                       <td className="position">
-                        {formatCoordinates(event.latitude, event.longitude).split('\n').map((line, i) => (
-                          <div key={i}>{line}</div>
-                        ))}
+                        {<div>{getLocation(event.latitude, event.longitude)}</div>
+                        
+                        }
                       </td>
                       <td className="audio-cell">
                         {event.audio_file_path ? (
