@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import './SettingsPage.css';
 import axios from 'axios';
+import { useDialog } from '../contexts/DialogContext';
 
 const API_URL = '/api';
 
 const SettingsPage = ({ onBack }) => {
+  const { showAlert } = useDialog();
   const [settings, setSettings] = useState({
     deviceName: 'EchoLog-01',
     recordingLength: 60,
@@ -58,10 +60,13 @@ const SettingsPage = ({ onBack }) => {
     try {
       await axios.put(`${API_URL}/settings/me`, settings);
       console.log('Saving settings:', settings);
-      alert('Settings saved successfully!');
+      await showAlert('Settings saved successfully!', 'Settings');
     } catch (err) {
       console.error('Error saving settings:', err);
-      alert('Failed to save settings: ' + (err.response?.data?.error || err.message));
+      await showAlert(
+        'Failed to save settings: ' + (err.response?.data?.error || err.message),
+        'Settings'
+      );
     }
   };
 
@@ -224,7 +229,7 @@ const SettingsPage = ({ onBack }) => {
             <button
               className="btn btn-warning"
               type="button"
-              onClick={() => alert('Factory reset not implemented yet.')}
+              onClick={() => showAlert('Factory reset not implemented yet.', 'Advanced')}
             >
               Factory Reset Device
             </button>
@@ -232,7 +237,7 @@ const SettingsPage = ({ onBack }) => {
             <button
               className="btn btn-danger"
               type="button"
-              onClick={() => alert('Clear all data not implemented yet.')}
+              onClick={() => showAlert('Clear all data not implemented yet.', 'Advanced')}
             >
               Clear All Data
             </button>
@@ -240,7 +245,7 @@ const SettingsPage = ({ onBack }) => {
             <button
               className="btn btn-secondary"
               type="button"
-              onClick={() => alert('Export configuration not implemented yet.')}
+              onClick={() => showAlert('Export configuration not implemented yet.', 'Advanced')}
             >
               Export Configuration
             </button>

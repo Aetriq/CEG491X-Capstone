@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import './AccountPage.css';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
+import { useDialog } from '../contexts/DialogContext';
 
 const API_URL = '/api';
 
 const AccountPage = ({ onBack }) => {
   const { user, logout } = useAuth();
+  const { showAlert } = useDialog();
   const [formData, setFormData] = useState({
     username: user?.username || '',
     email: user?.email || '',
@@ -35,7 +37,7 @@ const AccountPage = ({ onBack }) => {
 
   const handleSave = async () => {
     if (formData.newPassword && formData.newPassword !== formData.confirmPassword) {
-      alert('New passwords do not match!');
+      await showAlert('New passwords do not match!', 'Account');
       return;
     }
     setSaving(true);
@@ -46,7 +48,7 @@ const AccountPage = ({ onBack }) => {
         currentPassword: formData.currentPassword || undefined,
         newPassword: formData.newPassword || undefined
       });
-      alert('Account updated successfully!');
+      await showAlert('Account updated successfully!', 'Account');
       setFormData(prev => ({
         ...prev,
         currentPassword: '',
@@ -55,7 +57,10 @@ const AccountPage = ({ onBack }) => {
       }));
     } catch (err) {
       console.error('Error updating account:', err);
-      alert('Failed to update account: ' + (err.response?.data?.error || err.message));
+      await showAlert(
+        'Failed to update account: ' + (err.response?.data?.error || err.message),
+        'Account'
+      );
     } finally {
       setSaving(false);
     }
@@ -89,7 +94,7 @@ const AccountPage = ({ onBack }) => {
               <button
                 className="btn-text"
                 type="button"
-                onClick={() => alert('Avatar change not implemented yet.')}
+                onClick={() => showAlert('Avatar change not implemented yet.', 'Account')}
               >
                 Change Avatar
               </button>
@@ -170,7 +175,7 @@ const AccountPage = ({ onBack }) => {
             <button
               className="btn btn-secondary"
               type="button"
-              onClick={() => alert('Export data not implemented yet.')}
+              onClick={() => showAlert('Export data not implemented yet.', 'Account')}
             >
               Export My Data
             </button>
@@ -178,7 +183,7 @@ const AccountPage = ({ onBack }) => {
             <button
               className="btn btn-secondary"
               type="button"
-              onClick={() => alert('Usage report not implemented yet.')}
+              onClick={() => showAlert('Usage report not implemented yet.', 'Account')}
             >
               Download Usage Report
             </button>
@@ -186,7 +191,7 @@ const AccountPage = ({ onBack }) => {
             <button
               className="btn btn-warning"
               type="button"
-              onClick={() => alert('Clear cache not implemented yet.')}
+              onClick={() => showAlert('Clear cache not implemented yet.', 'Account')}
             >
               Clear App Cache
             </button>
@@ -207,7 +212,7 @@ const AccountPage = ({ onBack }) => {
               <button
                 className="btn btn-danger-outline"
                 type="button"
-                onClick={() => alert('Delete account not implemented yet.')}
+                onClick={() => showAlert('Delete account not implemented yet.', 'Account')}
               >
                 Delete My Account
               </button>

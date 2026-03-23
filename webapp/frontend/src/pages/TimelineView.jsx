@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useDialog } from '../contexts/DialogContext';
+import { useBle } from '../contexts/BleConnectionContext';
 import axios from 'axios';
 import AudioPlayer from '../components/AudioPlayer';
 import './TimelineView.css';
@@ -52,6 +54,8 @@ function TimelineView() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { showAlert } = useDialog();
+  const ble = useBle();
   const [timeline, setTimeline] = useState(null);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -65,48 +69,93 @@ function TimelineView() {
 
   const loadTimeline = async () => {
     setLoading(true);
+    const cacheKey = `${CACHE_KEY_PREFIX}${id}`;
+
+    let cachedParsed = null;
     try {
-      const cacheKey = `${CACHE_KEY_PREFIX}${id}`;
       const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        const { timeline: t, events: e } = JSON.parse(cached);
-        setTimeline(t);
-        const raw = e || [];
-        const recordingStart = t?.recording_start_time ? new Date(t.recording_start_time).getTime() : null;
-        const formatRecordedTime = (ms) => {
-          const d = new Date(ms);
-          return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      if (cached) cachedParsed = JSON.parse(cached);
+    } catch {
+      cachedParsed = null;
+    }
+
+    const normalizeCachedEvents = (t, rawEvents) => {
+      const raw = rawEvents || [];
+      const recordingStart = t?.recording_start_time ? new Date(t.recording_start_time).getTime() : null;
+      const formatRecordedTime = (ms) => {
+        const d = new Date(ms);
+        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      };
+      return raw.map((ev, i) => {
+        if (ev.event_number != null && ev.time != null) return ev;
+        const start = ev.start != null ? ev.start : 0;
+        const timeStr = ev.time ?? (recordingStart != null
+          ? formatRecordedTime(recordingStart + start * 1000)
+          : `${String(Math.floor(start / 60)).padStart(2, '0')}:${String(Math.floor(start % 60)).padStart(2, '0')}`);
+        return {
+          ...ev,
+          id: ev.id ?? i,
+          event_number: ev.event_number ?? i + 1,
+          time: timeStr,
+          transcript: ev.transcript ?? ev.text ?? ''
         };
-        const normalized = raw.map((ev, i) => {
-          if (ev.event_number != null && ev.time != null) return ev;
-          const start = ev.start != null ? ev.start : 0;
-          const timeStr = ev.time ?? (recordingStart != null
-            ? formatRecordedTime(recordingStart + start * 1000)
-            : `${String(Math.floor(start / 60)).padStart(2, '0')}:${String(Math.floor(start % 60)).padStart(2, '0')}`);
-          return {
-            ...ev,
-            id: ev.id ?? i,
-            event_number: ev.event_number ?? i + 1,
-            time: timeStr,
-            transcript: ev.transcript ?? ev.text ?? ''
-          };
-        });
-        const sorted = sortEventsEarliestToLatest(normalized);
-        setEvents(sorted);
+      });
+    };
+
+    const isDraftTimelineId = String(id).startsWith('draft');
+
+    try {
+      // Prefer server data when we have a persisted timeline id so multi-file / append
+      // always shows all events (localStorage cache can be stale after the 1st file).
+      if (!isDraftTimelineId) {
+        try {
+          const response = await axios.get(`${API_URL}/timelines/${id}`);
+          const timelineData = response.data.timeline;
+          setTimeline(timelineData);
+          const apiEvents = timelineData.events || [];
+          setEvents(sortEventsEarliestToLatest(apiEvents));
+          setIsFromCache(false);
+          try {
+            localStorage.setItem(
+              cacheKey,
+              JSON.stringify({ timeline: timelineData, events: apiEvents })
+            );
+          } catch {
+            // ignore quota errors
+          }
+          return;
+        } catch (apiErr) {
+          console.error('Error loading timeline from API:', apiErr);
+          if (cachedParsed) {
+            const { timeline: t, events: e } = cachedParsed;
+            setTimeline(t);
+            const normalized = normalizeCachedEvents(t, e);
+            setEvents(sortEventsEarliestToLatest(normalized));
+            setIsFromCache(true);
+            return;
+          }
+          if (apiErr.response?.status === 404) {
+            setTimeline(null);
+            setEvents([]);
+          }
+          throw apiErr;
+        }
+      }
+
+      // Draft timelines or offline-only: use cached payload if present
+      if (cachedParsed) {
+        const { timeline: t, events: e } = cachedParsed;
+        setTimeline(t);
+        const normalized = normalizeCachedEvents(t, e);
+        setEvents(sortEventsEarliestToLatest(normalized));
         setIsFromCache(true);
-        setLoading(false);
         return;
       }
-      const response = await axios.get(`${API_URL}/timelines/${id}`);
-      setTimeline(response.data.timeline);
-      const apiEvents = response.data.timeline.events || [];
-      setEvents(sortEventsEarliestToLatest(apiEvents));
-      setIsFromCache(false);
+
+      setTimeline(null);
+      setEvents([]);
     } catch (error) {
       console.error('Error loading timeline:', error);
-      if (error.response?.status === 404) {
-        setLoading(false);
-      }
     } finally {
       setLoading(false);
     }
@@ -126,17 +175,23 @@ function TimelineView() {
       link.remove();
     } catch (error) {
       console.error('Error exporting timeline:', error);
-      alert('Error exporting timeline: ' + (error.response?.data?.error || error.message));
+      await showAlert(
+        'Error exporting timeline: ' + (error.response?.data?.error || error.message),
+        'Timeline'
+      );
     }
   };
 
   const handleSave = async () => {
     try {
       const response = await axios.post(`${API_URL}/timelines/${id}/save`);
-      alert(response.data.message || 'Timeline saved successfully');
+      await showAlert(response.data.message || 'Timeline saved successfully', 'Timeline');
     } catch (error) {
       console.error('Error saving timeline:', error);
-      alert('Error saving timeline: ' + (error.response?.data?.error || error.message));
+      await showAlert(
+        'Error saving timeline: ' + (error.response?.data?.error || error.message),
+        'Timeline'
+      );
     }
   };
 
@@ -167,7 +222,7 @@ function TimelineView() {
       setEditForm({});
     } catch (error) {
       console.error('Error updating event:', error);
-      alert('Error updating event');
+      await showAlert('Error updating event', 'Timeline');
     }
   };
 
@@ -215,6 +270,12 @@ function TimelineView() {
           <div className="header-row">
             <div>
               <div className="title">Event Log</div>
+              {ble.isConnected && (
+                <div className="ble-timeline-status" title="EchoLog device still connected via Bluetooth">
+                  <span className="ble-dot" aria-hidden />
+                  BLE connected: {ble.deviceName}
+                </div>
+              )}
             </div>
           </div>
 

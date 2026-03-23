@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const { verifyToken, optionalAuth } = require('../middleware/auth');
@@ -148,15 +148,7 @@ router.get('/:id', async (req, res) => {
   try {
     const timelineId = parseInt(req.params.id);
 
-    // Use mock data if available
-    if (mockData) {
-      const timeline = mockData.getTimeline(timelineId);
-      const events = mockData.getEvents(timelineId);
-      timeline.events = events;
-      return res.json({ timeline });
-    }
-
-    // Use database if available
+    // Prefer database when available to avoid mixing storage backends.
     if (Timeline && Event) {
       const timeline = await Timeline.findById(timelineId);
       if (!timeline) {
@@ -165,6 +157,17 @@ router.get('/:id', async (req, res) => {
 
       const events = await Event.findByTimelineId(timelineId);
       timeline.events = events;
+      return res.json({ timeline });
+    }
+
+    // Fallback to mock data when DB models are unavailable.
+    if (mockData) {
+      const timeline = mockData.getTimeline(timelineId);
+      if (!timeline) {
+        return res.status(404).json({ error: 'Timeline not found' });
+      }
+      const events = mockData.getEvents(timelineId);
+      timeline.events = events || [];
       return res.json({ timeline });
     }
 

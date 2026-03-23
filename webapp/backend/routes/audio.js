@@ -904,11 +904,12 @@ router.post('/filter-and-transcribe', optionalAuth, (req, res, next) => {
       // Verify file still exists after DB save
       debugFileExists(filteredAudioPath, 'AFTER-DB-SAVE');
 
+      const persistedEvents = await Event.findByTimelineId(timeline.id);
       return res.json({
         message: 'Audio filtered and transcribed successfully',
         timelineId: timeline.id,
         recording_start_time: recordingStartTime.toISOString(),
-        events: eventsWithRecordedTime(segments, recordingStartTime, originalAudioPath, fullText)
+        events: persistedEvents
       });
     } catch (dbErr) {
       console.error(`[AUDIO-DEBUG] ❌ Database save failed:`, dbErr);
@@ -1081,7 +1082,14 @@ router.post('/append/:timelineId', optionalAuth, (req, res, next) => {
     console.log(`[AUDIO-DEBUG]   Segments count: ${segments.length}`);
 
     // Mock-data path
-    if (mockData && typeof mockData.appendTranscriptionEvent === 'function') {
+    // Keep storage selection consistent with `/filter-and-transcribe` so that
+    // multi-file transcription doesn't split events across DB (first file)
+    // and mockData (subsequent appends).
+    if (
+      mockData &&
+      typeof mockData.appendTranscriptionEvent === 'function' &&
+      !(req.user && Event && Timeline)
+    ) {
       try {
         console.log(`[AUDIO-DEBUG] 💾 Appending to mockData timeline ${timelineId}...`);
         console.log(`[AUDIO-DEBUG]   Original audio path to save: ${originalAudioPath}`);
