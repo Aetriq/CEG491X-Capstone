@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { verifyToken } = require('../middleware/auth');
-const { db } = require('../database/db');
+const { supabase } = require('../database/supabase');
 
 const DEFAULTS = {
   device_name: 'EchoLog-01',
@@ -37,22 +37,28 @@ function rowToSettings(row) {
 }
 
 // GET /api/settings/me
-router.get('/me', verifyToken, (req, res) => {
-  db.get(
-    'SELECT * FROM user_settings WHERE user_id = ?',
-    [req.user.id],
-    (err, row) => {
-      if (err) {
-        console.error('settings GET error', err);
-        return res.status(500).json({ error: 'Failed to load settings' });
-      }
-      res.json({ settings: rowToSettings(row) });
+router.get('/me', verifyToken, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('user_settings')
+      .select('*')
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('settings GET error', error);
+      return res.status(500).json({ error: 'Failed to load settings' });
     }
-  );
+
+    res.json({ settings: rowToSettings(data) });
+  } catch (err) {
+    console.error('settings GET error', err);
+    res.status(500).json({ error: 'Failed to load settings' });
+  }
 });
 
 // PUT /api/settings/me
-router.put('/me', verifyToken, (req, res) => {
+router.put('/me', verifyToken, async (req, res) => {
   const s = req.body || {};
   const toStore = {
     device_name: s.deviceName || DEFAULTS.device_name,
@@ -64,36 +70,30 @@ router.put('/me', verifyToken, (req, res) => {
     language: s.language || DEFAULTS.language
   };
 
-  db.run(
-    `INSERT INTO user_settings (user_id, device_name, recording_length, auto_upload, gps_enabled, notifications, theme, language)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(user_id) DO UPDATE SET
-       device_name = excluded.device_name,
-       recording_length = excluded.recording_length,
-       auto_upload = excluded.auto_upload,
-       gps_enabled = excluded.gps_enabled,
-       notifications = excluded.notifications,
-       theme = excluded.theme,
-       language = excluded.language,
-       updated_at = datetime('now')`,
-    [
-      req.user.id,
-      toStore.device_name,
-      toStore.recording_length,
-      toStore.auto_upload,
-      toStore.gps_enabled,
-      toStore.notifications,
-      toStore.theme,
-      toStore.language
-    ],
-    (err) => {
-      if (err) {
-        console.error('settings PUT error', err);
-        return res.status(500).json({ error: 'Failed to save settings' });
-      }
-      res.json({ message: 'Settings saved', settings: rowToSettings(toStore) });
+  try {
+    const { error } = await supabase
+      .from('user_settings')
+      .upsert({
+        user_id: req.user.id,
+        device_name: toStore.device_name,
+        recording_length: toStore.recording_length,
+        auto_upload: toStore.auto_upload,
+        gps_enabled: toStore.gps_enabled,
+        notifications: toStore.notifications,
+        theme: toStore.theme,
+        language: toStore.language
+      }, { onConflict: 'user_id' });
+
+    if (error) {
+      console.error('settings PUT error', error);
+      return res.status(500).json({ error: 'Failed to save settings' });
     }
-  );
+
+    res.json({ message: 'Settings saved', settings: rowToSettings(toStore) });
+  } catch (err) {
+    console.error('settings PUT error', err);
+    res.status(500).json({ error: 'Failed to save settings' });
+  }
 });
 
 module.exports = router;

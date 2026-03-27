@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useDialog } from '../contexts/DialogContext';
+import { useBle } from '../contexts/BleConnectionContext';
 import './Home.css';
 
 //ONLY TEMP
@@ -198,195 +200,63 @@ async function appendAudioQueued(timelineId, audioFile, filename, recordingStart
 function Home() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const [bleConnectionStatus, setBleConnectionStatus] = useState('Disconnected (Bluetooth)');
-  const [bleDeviceName, setBleDeviceName] = useState('Not Connected');
-  const [localUploadFiles, setLocalUploadFiles] = useState([]);
-  const [localUploadStatus, setLocalUploadStatus] = useState('No files selected');
-  const [localUploadLoading, setLocalUploadLoading] = useState(false);
+  const { showAlert, showConfirm } = useDialog();
+  const ble = useBle();
   const [downloadTranscribeLoading, setDownloadTranscribeLoading] = useState(false);
   const [downloadStatus, setDownloadStatus] = useState('Status: Idle');
-  const localFileInputRef = useRef(null);
   const downloadedFilesRef = useRef([]);
+  const lastDownloadedBlobRef = useRef(null);
+  const lastDownloadedFilenameRef = useRef(null);
 
-  const formatBytes = (bytes) => {
-    if (!bytes || bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-  };
-
-  const onLocalFileChange = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length > 0) {
-      setLocalUploadFiles(files);
-      const totalSize = files.reduce((sum, f) => sum + f.size, 0);
-      if (files.length === 1) {
-        setLocalUploadStatus(`${files[0].name} — ${formatBytes(files[0].size)}`);
-      } else {
-        setLocalUploadStatus(`${files.length} files selected — ${formatBytes(totalSize)} total`);
-      }
+  // Keep download/upload controls in sync when BLE connects/disconnects (persists across routes).
+  useEffect(() => {
+    const fileSelect = document.getElementById('fileSelect');
+    const fileChecklist = document.getElementById('fileChecklist');
+    const dlStatus = document.getElementById('dlStatus');
+    const btnRefresh = document.getElementById('btnRefresh');
+    const btnDownload = document.getElementById('btnDownload');
+    const btnDelete = document.getElementById('btnDelete');
+    const btnStartUpload = document.getElementById('btnStartUpload');
+    const btnTranscribe = document.getElementById('btnTranscribe');
+    if (!fileSelect || !fileChecklist || !dlStatus || !btnRefresh || !btnDownload || !btnDelete || !btnStartUpload || !btnTranscribe) {
+      return;
+    }
+    if (ble.isConnected) {
+      btnRefresh.disabled = false;
+      btnDownload.disabled = false;
+      btnDelete.disabled = false;
+      btnStartUpload.disabled = false;
     } else {
-      setLocalUploadFiles([]);
-      setLocalUploadStatus('No files selected');
+      btnRefresh.disabled = true;
+      btnDownload.disabled = true;
+      btnDelete.disabled = true;
+      btnStartUpload.disabled = true;
+      fileSelect.innerHTML = '<option>Disconnected</option>';
+      fileChecklist.innerHTML = '<div class="file-checklist-empty">Disconnected</div>';
+      downloadedFilesRef.current = [];
+      lastDownloadedBlobRef.current = null;
+      lastDownloadedFilenameRef.current = null;
+      btnTranscribe.style.display = 'none';
+      dlStatus.innerText = 'Status: Disconnected';
+      setDownloadStatus('Status: Disconnected');
     }
-  };
-
-  const onLocalTranscribe = async () => {
-    if (!localUploadFiles || localUploadFiles.length === 0) return;
-    setLocalUploadLoading(true);
-    
-    const totalFiles = localUploadFiles.length;
-    let processedCount = 0;
-    let timelineId = null;
-    let allEvents = [];
-    const errors = [];
-
-    try {
-      // Process all files sequentially using the queue
-      for (let i = 0; i < localUploadFiles.length; i++) {
-        const file = localUploadFiles[i];
-        processedCount = i + 1;
-        
-        // Update status to show progress
-        if (totalFiles > 1) {
-          setLocalUploadStatus(`Processing ${processedCount}/${totalFiles}: ${file.name}…`);
-        } else {
-          setLocalUploadStatus(`Processing: ${file.name}…`);
-        }
-
-        try {
-          let result;
-          
-          // Determine if we need to create a new timeline or append
-          // Create new timeline if:
-          // 1. This is the first file (i === 0), OR
-          // 2. Previous file failed and we don't have a timeline yet
-          const shouldCreateNewTimeline = (i === 0) || !timelineId;
-          
-          if (shouldCreateNewTimeline) {
-            // Create new timeline (first file or fallback after failure)
-            // Don't send recording_start_time for Local Upload - let backend use WAV header
-            result = await transcribeAudioQueued(file, file.name, undefined);
-            timelineId = result.timelineId || 1;
-            allEvents = result.events || [];
-            
-            if (i > 0) {
-              console.log(`[Frontend] First file failed, created new timeline ${timelineId} for file ${i + 1}`);
-            }
-          } else {
-            // Append to existing timeline
-            // Don't send recording_start_time for Local Upload - let backend use WAV header
-            result = await appendAudioQueued(timelineId, file, file.name, undefined);
-            // Append returns updated events array
-            allEvents = result.events || allEvents;
-          }
-          
-          // Update timeline cache after each successful transcription
-          if (timelineId && result) {
-            const timeline = {
-              id: timelineId,
-              device_id: null,
-              date_generated: new Date().toISOString(),
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-              recording_start_time: result.recording_start_time || null
-            };
-            
-            try {
-              localStorage.setItem(
-                `echolog_timeline_${timelineId}`,
-                JSON.stringify({ timeline, events: allEvents })
-              );
-            } catch (e) {
-              console.warn('Cache write failed:', e);
-            }
-          }
-        } catch (error) {
-          console.error(`Error transcribing ${file.name}:`, error);
-          const errorMessage = error.message || 'Unknown error';
-          errors.push({ file: file.name, error: errorMessage });
-          
-          // If this was supposed to be the first file and it failed, log it
-          if (i === 0) {
-            console.warn(`[Frontend] First file failed, will try to create timeline with next file`);
-          }
-        }
-      }
-
-      // Final status and navigation - wait until ALL files are processed
-      const successCount = totalFiles - errors.length;
-      
-      if (errors.length === 0) {
-        // All succeeded
-        if (totalFiles > 1) {
-          setLocalUploadStatus(`Done — ${totalFiles} files transcribed and queued. Opening timeline…`);
-        } else {
-          setLocalUploadStatus('Done — opening timeline');
-        }
-        
-        // Navigate to the timeline with all events
-        if (timelineId) {
-          navigate(`/timeline/${timelineId}`);
-        } else {
-          setLocalUploadStatus('Error: Timeline was not created');
-        }
-      } else if (successCount > 0 && timelineId) {
-        // Some succeeded, some failed - but we have a timeline
-        const errorSummary = errors.length === 1 
-          ? `1 file failed (${errors[0].file})`
-          : `${errors.length} files failed`;
-        setLocalUploadStatus(
-          `Partial success: ${successCount}/${totalFiles} processed. ${errorSummary}. Opening timeline…`
-        );
-        navigate(`/timeline/${timelineId}`);
-      } else {
-        // All failed or no timeline created
-        if (errors.length === totalFiles) {
-          const errorMsg = errors.map(e => `${e.file}: ${e.error}`).join('; ');
-          setLocalUploadStatus(`Error: All ${totalFiles} files failed. ${errorMsg}`);
-        } else {
-          setLocalUploadStatus(`Error: Failed to create timeline. ${errors.map(e => `${e.file}: ${e.error}`).join('; ')}`);
-        }
-      }
-    } catch (error) {
-      console.error('Local transcribe error:', error);
-      setLocalUploadStatus('Error: ' + (error.message || 'Unknown error'));
-    } finally {
-      setLocalUploadLoading(false);
-    }
-  };
+  }, [ble.isConnected]);
 
   useEffect(() => {
-    // Web Bluetooth UUIDs (from your original HTML mockup)
-    const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
-    const CHAR_CMD_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
-    const CHAR_DATA_UUID = '829a287c-03c4-4c22-9442-70b9687c703b';
-    const CHAR_UPLOAD_UUID = 'ce2e1b12-5883-4903-8120-001004b3410f';
-
-    let device, server, service, cmdChar, dataChar, uploadChar;
     let fileBuffer = [];
     let isDownloading = false;
     let startTime;
-    let isConnected = false;
     let stopUploadFlag = false;
     let uploadFileObj;
 
     let downloadTotalSize = 0;
     let downloadBytesReceived = 0;
-    // Queue for multi-file downloads from the Download card
     let downloadQueue = [];
     let currentDownloadIndex = -1;
-    let lastDownloadedBlob = null;
-    let lastDownloadedFilename = null;
 
-    const connStatus = document.getElementById('connStatus');
-    const bleList = document.getElementById('bleList');
     const fileSelect = document.getElementById('fileSelect');
     const dlStatus = document.getElementById('dlStatus');
     const uploadStatus = document.getElementById('uploadStatus');
-    const btnScan = document.getElementById('btnScan');
-    const btnDisconnect = document.getElementById('btnDisconnect');
     const btnRefresh = document.getElementById('btnRefresh');
     const btnDownload = document.getElementById('btnDownload');
     const btnDelete = document.getElementById('btnDelete');
@@ -394,18 +264,17 @@ function Home() {
     const btnStopUpload = document.getElementById('btnStopUpload');
     const fileInput = document.getElementById('fileInput');
     const btnTranscribe = document.getElementById('btnTranscribe');
-    const btnSaveConfig = document.getElementById('btnSaveConfig');
-    const btnDefaultConfig = document.getElementById('btnDefaultConfig');
-    const btnSyncTime = document.getElementById('btnSyncTime');
+    const dlRangeStart = document.getElementById('dlRangeStart');
+    const dlRangeEnd = document.getElementById('dlRangeEnd');
+    const dlDownloadAll = document.getElementById('dlDownloadAll');
+    const btnApplyRange = document.getElementById('btnApplyRange');
+    const dlRangeStatus = document.getElementById('dlRangeStatus');
 
     if (
-      !connStatus ||
-      !bleList ||
       !fileSelect ||
+      !fileChecklist ||
       !dlStatus ||
       !uploadStatus ||
-      !btnScan ||
-      !btnDisconnect ||
       !btnRefresh ||
       !btnDownload ||
       !btnDelete ||
@@ -413,9 +282,11 @@ function Home() {
       !btnStopUpload ||
       !fileInput ||
       !btnTranscribe ||
-      !btnSaveConfig ||
-      !btnDefaultConfig ||
-      !btnSyncTime
+      !dlRangeStart ||
+      !dlRangeEnd ||
+      !dlDownloadAll ||
+      !btnApplyRange ||
+      !dlRangeStatus
     ) {
       return;
     }
@@ -429,71 +300,100 @@ function Home() {
     }
 
     async function sendCommand(cmd) {
-      if (!isConnected || !cmdChar) return;
-      const enc = new TextEncoder();
-      await cmdChar.writeValue(enc.encode(cmd));
+      return ble.sendCommand(cmd);
     }
 
     function refreshFileList() {
       fileSelect.innerHTML = '<option>Scanning...</option>';
+      renderFileChecklist();
       isDownloading = false;
+      dlRangeStatus.innerText = 'Range: All files';
       sendCommand('ls');
     }
 
-    function onConnected() {
-      isConnected = true;
-      setBleConnectionStatus('Connected (Bluetooth)');
-      setBleDeviceName(device?.name || 'Device');
-      if (connStatus) connStatus.innerText = 'Connected (Bluetooth)';
-      if (bleList) {
-        bleList.innerText = `Active: ${device?.name || 'Device'}`;
-        bleList.style.color = 'green';
+    function renderFileChecklist() {
+      fileChecklist.innerHTML = '';
+      const options = Array.from(fileSelect.options || []);
+      const validOptions = options.filter(
+        (opt) => !opt.text.includes('Scanning') && !opt.text.includes('Disconnected')
+      );
+      if (validOptions.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'file-checklist-empty';
+        empty.innerText = options[0]?.text || 'Disconnected';
+        fileChecklist.appendChild(empty);
+        return;
       }
-
-      btnScan.style.display = 'none';
-      btnDisconnect.style.display = 'inline-block';
-
-      btnDownload.disabled = false;
-      btnDelete.disabled = false;
-      btnStartUpload.disabled = false;
-      btnRefresh.disabled = false;
-      btnSaveConfig.disabled = false;
-      btnDefaultConfig.disabled = false;
-      btnSyncTime.disabled = false;
-
-      refreshFileList();
+      validOptions.forEach((opt, idx) => {
+        const row = document.createElement('label');
+        row.className = 'file-checklist-row';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = !!opt.selected;
+        checkbox.addEventListener('change', () => {
+          opt.selected = checkbox.checked;
+        });
+        const text = document.createElement('span');
+        text.innerText = opt.text;
+        row.appendChild(checkbox);
+        row.appendChild(text);
+        fileChecklist.appendChild(row);
+        if (idx === 0 && fileSelect.value !== opt.value) {
+          fileSelect.value = opt.value;
+        }
+      });
     }
 
-    function onDisconnected() {
-      isConnected = false;
-      setBleConnectionStatus('Disconnected (Bluetooth)');
-      setBleDeviceName('Not Connected');
-      if (connStatus) connStatus.innerText = 'Disconnected (Bluetooth)';
-      if (bleList) {
-        bleList.innerText = 'Not Connected';
-        bleList.style.color = '#555';
+    function parseTimestampFromFilename(filename) {
+      if (!filename) return null;
+      const match = filename.match(/(\d{8})_(\d{6})/);
+      if (!match) return null;
+      const [, datePart, timePart] = match;
+      const year = parseInt(datePart.slice(0, 4), 10);
+      const month = parseInt(datePart.slice(4, 6), 10) - 1;
+      const day = parseInt(datePart.slice(6, 8), 10);
+      const hour = parseInt(timePart.slice(0, 2), 10);
+      const minute = parseInt(timePart.slice(2, 4), 10);
+      const second = parseInt(timePart.slice(4, 6), 10);
+      const d = new Date(year, month, day, hour, minute, second);
+      return Number.isNaN(d.getTime()) ? null : d.getTime();
+    }
+
+    function getOptionTimestampMs(opt) {
+      if (!opt || !opt.value) return null;
+      const datasetVal = opt.dataset?.recordingTimeMs;
+      if (datasetVal) {
+        const ms = Number(datasetVal);
+        if (!Number.isNaN(ms) && ms > 0) return ms;
       }
+      return parseTimestampFromFilename(opt.value);
+    }
 
-      btnScan.style.display = 'inline-block';
-      btnDisconnect.style.display = 'none';
+    function isWithinSelectedRange(opt) {
+      const ts = getOptionTimestampMs(opt);
+      // If we cannot infer a timestamp, include by default so files are not silently excluded.
+      if (ts == null) return true;
+      const startMs = dlRangeStart.value ? new Date(dlRangeStart.value).getTime() : null;
+      const endMs = dlRangeEnd.value ? new Date(dlRangeEnd.value).getTime() : null;
+      if (startMs != null && !Number.isNaN(startMs) && ts < startMs) return false;
+      if (endMs != null && !Number.isNaN(endMs) && ts > endMs) return false;
+      return true;
+    }
 
-      btnRefresh.disabled = true;
-      btnDownload.disabled = true;
-      btnDelete.disabled = true;
-      btnStartUpload.disabled = true;
-      btnSaveConfig.disabled = true;
-      btnDefaultConfig.disabled = true;
-      btnSyncTime.disabled = true;
-
-      fileSelect.innerHTML = '<option>Disconnected</option>';
-      
-      // Clear downloaded files on disconnect
-      downloadedFilesRef.current = [];
-      lastDownloadedBlob = null;
-      lastDownloadedFilename = null;
-      btnTranscribe.style.display = 'none';
-      dlStatus.innerText = 'Status: Disconnected';
-      setDownloadStatus('Status: Disconnected');
+    function applyRangeSelection() {
+      const validOptions = Array.from(fileSelect.options).filter(
+        (opt) => !opt.text.includes('Scanning') && !opt.text.includes('Disconnected')
+      );
+      if (validOptions.length === 0) {
+        dlRangeStatus.innerText = 'Range: No files available';
+        return;
+      }
+      const matched = validOptions.filter(isWithinSelectedRange);
+      validOptions.forEach((opt) => {
+        opt.selected = matched.includes(opt);
+      });
+      dlRangeStatus.innerText = `Range: ${matched.length}/${validOptions.length} files selected`;
+      renderFileChecklist();
     }
 
     function finishDownload() {
@@ -526,8 +426,8 @@ function Home() {
       }
       
       // Keep for backward compatibility (single file mode)
-      lastDownloadedBlob = blob;
-      lastDownloadedFilename = filename;
+      lastDownloadedBlobRef.current = blob;
+      lastDownloadedFilenameRef.current = filename;
       
       // Do NOT trigger a browser download; keep file only in web app memory
       isDownloading = false;
@@ -598,6 +498,11 @@ function Home() {
           }
           const end = Math.min(offset + CHUNK_SIZE, total);
           const chunk = bytes.slice(offset, end);
+          const uploadChar = ble.getUploadCharacteristic();
+          if (!uploadChar) {
+            uploadStatus.innerText = 'Upload failed: Bluetooth not connected';
+            return;
+          }
           await uploadChar.writeValue(chunk);
           offset += chunk.length;
 
@@ -689,12 +594,20 @@ function Home() {
             }
             if (recordingTimeIso) {
               opt.dataset.recordingTime = recordingTimeIso;
+              opt.dataset.recordingTimeMs = String(new Date(recordingTimeIso).getTime());
+            } else {
+              const fromName = parseTimestampFromFilename(name);
+              if (fromName != null) {
+                opt.dataset.recordingTimeMs = String(fromName);
+              }
             }
 
             fileSelect.appendChild(opt);
+            renderFileChecklist();
           }
           if (fileSelect.options[0] && fileSelect.options[0].text.includes('Scanning')) {
             fileSelect.remove(0);
+            renderFileChecklist();
           }
           return;
         }
@@ -716,33 +629,8 @@ function Home() {
       }
     }
 
-    const onScanClick = async () => {
-      try {
-        device = await navigator.bluetooth.requestDevice({
-          filters: [{ services: [SERVICE_UUID] }]
-        });
-        bleList.innerText = 'Connecting...';
-        device.addEventListener('gattserverdisconnected', onDisconnected);
-        server = await device.gatt.connect();
-        service = await server.getPrimaryService(SERVICE_UUID);
-        cmdChar = await service.getCharacteristic(CHAR_CMD_UUID);
-        dataChar = await service.getCharacteristic(CHAR_DATA_UUID);
-        uploadChar = await service.getCharacteristic(CHAR_UPLOAD_UUID);
-        await dataChar.startNotifications();
-        dataChar.addEventListener('characteristicvaluechanged', handleIncomingData);
-        onConnected();
-      } catch (error) {
-        // Web Bluetooth typically only works on HTTPS or localhost
-        console.error(error);
-        bleList.innerText = `Error: ${error.message}`;
-      }
-    };
-
-    const onDisconnectClick = () => {
-      if (device && device.gatt && device.gatt.connected) device.gatt.disconnect();
-    };
-
     const onRefreshClick = () => refreshFileList();
+    const onApplyRangeClick = () => applyRangeSelection();
 
     const onDeleteClick = async () => {
       const selectedOptions = Array.from(fileSelect.options).filter((opt) => opt.selected && !opt.text.includes('Scanning') && !opt.text.includes('Disconnected'));
@@ -752,7 +640,15 @@ function Home() {
         return;
       }
 
-      if (!confirm(`Delete ${selectedOptions.length} file(s)? This cannot be undone.`)) {
+      const confirmed = await showConfirm(
+        `Delete ${selectedOptions.length} file(s)? This cannot be undone.`,
+        {
+          title: 'Delete files',
+          confirmText: 'Delete',
+          cancelText: 'Cancel'
+        }
+      );
+      if (!confirmed) {
         return;
       }
 
@@ -788,8 +684,17 @@ function Home() {
     };
 
     const onDownloadClick = () => {
-      // Gather all selected options (multi-select)
-      const selectedOptions = Array.from(fileSelect.options).filter((opt) => opt.selected && !opt.text.includes('Scanning'));
+      const validOptions = Array.from(fileSelect.options).filter(
+        (opt) => !opt.text.includes('Scanning') && !opt.text.includes('Disconnected')
+      );
+      // Download all mode optionally constrained by date/time range.
+      let selectedOptions = [];
+      if (dlDownloadAll.checked) {
+        selectedOptions = validOptions.filter(isWithinSelectedRange);
+      } else {
+        // Gather all selected options (multi-select)
+        selectedOptions = validOptions.filter((opt) => opt.selected);
+      }
       if (selectedOptions.length === 0) {
         const filename = fileSelect.value;
         if (!filename || filename.includes('Scanning')) return;
@@ -844,8 +749,11 @@ function Home() {
       
       // Fallback to single file mode if array is empty
       if (audioFiles.length === 0) {
-        if (!lastDownloadedBlob || !lastDownloadedFilename) return;
-        audioFiles.push({ blob: lastDownloadedBlob, filename: lastDownloadedFilename });
+        if (!lastDownloadedBlobRef.current || !lastDownloadedFilenameRef.current) return;
+        audioFiles.push({
+          blob: lastDownloadedBlobRef.current,
+          filename: lastDownloadedFilenameRef.current
+        });
       }
       
       if (audioFiles.length === 0) return;
@@ -900,6 +808,11 @@ function Home() {
               // Append to existing timeline (preserve per-file recording time when available)
               const recordingTimeISO = file.recordingStartTime || undefined;
               result = await appendAudioQueued(timelineId, file.blob, file.filename, recordingTimeISO);
+              // In mockData fallback mode the backend may create a new timelineId;
+              // update the frontend timelineId so we cache & navigate the correct timeline.
+              if (result?.timelineId) {
+                timelineId = result.timelineId;
+              }
               // Append returns updated events array
               allEvents = result.events || allEvents;
             }
@@ -980,13 +893,13 @@ function Home() {
             const statusText = `Error: All ${totalFiles} files failed. ${errorMsg}`;
             dlStatus.innerText = statusText;
             setDownloadStatus(statusText);
-            alert(`Error: All files failed. ${errorMsg}`);
+            await showAlert(`Error: All files failed. ${errorMsg}`, 'Transcription failed');
           } else {
             const errorMsg = errors.map(e => `${e.file}: ${e.error}`).join('; ');
             const statusText = `Error: Failed to create timeline. ${errorMsg}`;
             dlStatus.innerText = statusText;
             setDownloadStatus(statusText);
-            alert(`Error: Failed to create timeline. ${errorMsg}`);
+            await showAlert(`Error: Failed to create timeline. ${errorMsg}`, 'Transcription failed');
           }
         }
       } catch (error) {
@@ -994,7 +907,7 @@ function Home() {
         const errorText = 'Error: ' + (error.message || 'Unknown error');
         dlStatus.innerText = errorText;
         setDownloadStatus(errorText);
-        alert('Error transcribing audio: ' + (error.message || 'Unknown error'));
+        await showAlert('Error transcribing audio: ' + (error.message || 'Unknown error'), 'Transcription error');
       } finally {
         setDownloadTranscribeLoading(false);
         btnTranscribe.disabled = false;
@@ -1014,110 +927,36 @@ function Home() {
       }
     };
 
-    const onSaveConfigClick = async () => {
-      const recLength = document.getElementById('recLengthSlider')?.value || '30';
-      const actThresh = document.getElementById('actThresh')?.value || '1800';
-      const actTime = document.getElementById('actTime')?.value || '10';
-      const inaThresh = document.getElementById('inaThresh')?.value || '1500';
-      const inaTime = document.getElementById('inaTime')?.value || '10';
-      
-      try {
-        await sendCommand(`cfg_rec ${recLength}`);
-        await new Promise(resolve => setTimeout(resolve, 200));
-        await sendCommand(`cfg_acc ${actThresh} ${actTime} ${inaThresh} ${inaTime}`);
-        dlStatus.innerText = 'Configuration saved to device';
-        setDownloadStatus('Configuration saved to device');
-      } catch (error) {
-        console.error('Error saving config:', error);
-        dlStatus.innerText = 'Error saving configuration';
-        setDownloadStatus('Error saving configuration');
-      }
-    };
+    ble.setDataHandler(handleIncomingData);
 
-    const onDefaultConfigClick = async () => {
-      const recLengthSlider = document.getElementById('recLengthSlider');
-      const sVal = document.getElementById('sVal');
-      const actThresh = document.getElementById('actThresh');
-      const actTime = document.getElementById('actTime');
-      const inaThresh = document.getElementById('inaThresh');
-      const inaTime = document.getElementById('inaTime');
-      
-      if (recLengthSlider) recLengthSlider.value = '30';
-      if (sVal) sVal.innerText = '30s';
-      if (actThresh) actThresh.value = '1800';
-      if (actTime) actTime.value = '10';
-      if (inaThresh) inaThresh.value = '1500';
-      if (inaTime) inaTime.value = '10';
-      
-      try {
-        await sendCommand('cfg_rec 30');
-        await new Promise(resolve => setTimeout(resolve, 200));
-        await sendCommand('cfg_acc 1800 10 1500 10');
-        dlStatus.innerText = 'Defaults restored and saved';
-        setDownloadStatus('Defaults restored and saved');
-      } catch (error) {
-        console.error('Error resetting config:', error);
-        dlStatus.innerText = 'Error resetting configuration';
-        setDownloadStatus('Error resetting configuration');
-      }
-    };
-
-    const onSyncTimeClick = async () => {
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth() + 1;
-      const day = now.getDate();
-      const hours = now.getHours();
-      const minutes = now.getMinutes();
-      const seconds = now.getSeconds();
-      
-      try {
-        await sendCommand(`time ${year} ${month} ${day} ${hours} ${minutes} ${seconds}`);
-        dlStatus.innerText = 'RTC time synced';
-        setDownloadStatus('RTC time synced');
-      } catch (error) {
-        console.error('Error syncing time:', error);
-        dlStatus.innerText = 'Error syncing time';
-        setDownloadStatus('Error syncing time');
-      }
-    };
-
-    btnScan.addEventListener('click', onScanClick);
-    btnDisconnect.addEventListener('click', onDisconnectClick);
     btnRefresh.addEventListener('click', onRefreshClick);
+    btnApplyRange.addEventListener('click', onApplyRangeClick);
     btnDownload.addEventListener('click', onDownloadClick);
     btnDelete.addEventListener('click', onDeleteClick);
     fileInput.addEventListener('change', onFileChange);
     btnStartUpload.addEventListener('click', onStartUploadClick);
     btnStopUpload.addEventListener('click', onStopUploadClick);
     btnTranscribe.addEventListener('click', onTranscribeClick);
-    btnSaveConfig.addEventListener('click', onSaveConfigClick);
-    btnDefaultConfig.addEventListener('click', onDefaultConfigClick);
-    btnSyncTime.addEventListener('click', onSyncTimeClick);
 
-    // initial UI state
-    onDisconnected();
     btnTranscribe.style.display = 'none';
+    renderFileChecklist();
 
     return () => {
+      ble.setDataHandler(null);
       try {
-        btnScan.removeEventListener('click', onScanClick);
-        btnDisconnect.removeEventListener('click', onDisconnectClick);
         btnRefresh.removeEventListener('click', onRefreshClick);
+        btnApplyRange.removeEventListener('click', onApplyRangeClick);
         btnDownload.removeEventListener('click', onDownloadClick);
         btnDelete.removeEventListener('click', onDeleteClick);
         fileInput.removeEventListener('change', onFileChange);
         btnStartUpload.removeEventListener('click', onStartUploadClick);
         btnStopUpload.removeEventListener('click', onStopUploadClick);
         btnTranscribe.removeEventListener('click', onTranscribeClick);
-        btnSaveConfig.removeEventListener('click', onSaveConfigClick);
-        btnDefaultConfig.removeEventListener('click', onDefaultConfigClick);
-        btnSyncTime.removeEventListener('click', onSyncTimeClick);
       } catch {
         // ignore
       }
     };
-  }, []);
+  }, [ble, navigate, showAlert, showConfirm]);
 
   return (
     <div className="home-shell">
@@ -1133,9 +972,9 @@ function Home() {
       <div className="sidebar">
         <div className="logo">EchoLog</div>
         <div className="status-panel">
-          Device: <span id="connStatus">{bleConnectionStatus}</span>
+          Device: <span>{ble.connectionStatus}</span>
           <br />
-          Bluetooth: <span id="bleDeviceName">{bleDeviceName}</span>
+          Bluetooth: <span>{ble.deviceName}</span>
         </div>
         <div className="menu-item active">Home</div>
         <div className="menu-item" onClick={() => navigate('/menu')}>
@@ -1198,164 +1037,95 @@ function Home() {
             </div>
           </div>
 
-          <div className="card">
+          <div className="card connect-card">
             <div className="card-header">
-              <div className="icon-box red-icon">⬇</div>
+              <div className="icon-box teal-icon">🔗</div>
               <div>
-                <h3>Download Files</h3>
-                <p className="subtext">Download device&apos;s raw files</p>
+                <h3>Connect Device</h3>
+                <p className="subtext">Connect via Bluetooth Low Energy (BLE)</p>
               </div>
             </div>
-            <div className="info-line" id="dlStatus">
-              Status: Idle
+            <div className="connection-single">
+              <div className="conn-box">
+                <div className="conn-title">Bluetooth Connection:</div>
+                <div
+                  className="device-list"
+                  style={ble.isConnected ? { color: '#4ade80' } : undefined}
+                >
+                  {ble.isConnected ? `Active: ${ble.deviceName}` : 'Not Connected'}
+                </div>
+                <div className="connection-actions">
+                  <button
+                    type="button"
+                    className="btn btn-orange"
+                    style={{ display: ble.isConnected ? 'none' : 'inline-block' }}
+                    disabled={!ble.isBleSupported}
+                    onClick={() => void ble.connect()}
+                  >
+                    {ble.isBleSupported ? 'SCAN & CONNECT' : 'UNSUPPORTED BROWSER'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-red"
+                    style={{ display: ble.isConnected ? 'inline-block' : 'none' }}
+                    onClick={() => ble.disconnect()}
+                  >
+                    DISCONNECT
+                  </button>
+                </div>
+                <div className="hint">
+                  {ble.isBleSupported
+                    ? 'Tip: Web Bluetooth works best on Chrome/Edge over HTTPS or localhost.'
+                    : ble.bleSupportMessage}
+                </div>
+              </div>
             </div>
-            <div className="control-group">
-              <select id="fileSelect" multiple>
-                <option>Disconnected</option>
-              </select>
-              <button className="btn btn-blue" id="btnRefresh" disabled title="Refresh list">
-                ↻
-              </button>
-              <button className="btn btn-green" id="btnDownload" disabled>
-                DOWNLOAD
-              </button>
-              <button className="btn btn-red" id="btnDelete" disabled>
-                DELETE
-              </button>
-              <button className="btn btn-orange" id="btnTranscribe" style={{ display: 'none' }}>
-                TRANSCRIBE
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="card local-upload-row">
-          <div className="card-header">
-            <div className="icon-box purple-icon">📁</div>
-            <div>
-              <h3>Local Upload</h3>
-              <p className="subtext">Upload one or more audio files from your computer to transcribe and open timeline</p>
-            </div>
-          </div>
-          <div className="info-line local-upload-status">
-            {localUploadStatus}
-          </div>
-          <div className="control-group">
-            <input
-              ref={localFileInputRef}
-              type="file"
-              accept="audio/*,.wav,.mp3,.ogg,.m4a"
-              multiple
-              onChange={onLocalFileChange}
-              style={{ display: 'none' }}
-            />
-            <button
-              type="button"
-              className="btn btn-orange"
-              onClick={() => localFileInputRef.current?.click()}
-            >
-              SELECT FILES
-            </button>
-            <button
-              type="button"
-              className="btn btn-green"
-              onClick={onLocalTranscribe}
-              disabled={!localUploadFiles || localUploadFiles.length === 0 || localUploadLoading}
-            >
-              {localUploadLoading 
-                ? (localUploadFiles.length > 1 
-                    ? `PROCESSING ${localUploadFiles.length} FILES…` 
-                    : 'PROCESSING…')
-                : localUploadFiles.length > 1
-                  ? `TRANSCRIBE ${localUploadFiles.length} FILES`
-                  : 'TRANSCRIBE & OPEN TIMELINE'}
-            </button>
           </div>
         </div>
 
         <div className="card bottom-row">
           <div className="card-header">
-            <div className="icon-box purple-icon">⚙️</div>
+            <div className="icon-box red-icon">⬇</div>
             <div>
-              <h3>Device Parameters</h3>
-              <p className="subtext">Push settings directly to NVS memory</p>
+              <h3>Download Files</h3>
+              <p className="subtext">Download and transcribe by date/time range or all files</p>
             </div>
           </div>
-          <div style={{ marginBottom: '15px' }}>
-            <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600, fontSize: '13px', color: '#444' }}>
-              Audio Recording Length (s)
+          <div className="info-line" id="dlStatus">
+            Status: Idle
+          </div>
+          <div className="download-filter-row">
+            <label className="download-filter-label" htmlFor="dlRangeStart">From</label>
+            <input id="dlRangeStart" type="datetime-local" className="download-filter-input" />
+            <label className="download-filter-label" htmlFor="dlRangeEnd">To</label>
+            <input id="dlRangeEnd" type="datetime-local" className="download-filter-input" />
+            <button className="btn btn-blue" id="btnApplyRange" type="button">
+              SELECT RANGE
+            </button>
+          </div>
+          <div className="download-filter-options">
+            <label className="download-all-toggle">
+              <input id="dlDownloadAll" type="checkbox" />
+              Download all files (respecting selected range)
             </label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <input
-                type="range"
-                min="10"
-                max="300"
-                defaultValue="30"
-                id="recLengthSlider"
-                style={{ flex: 1, cursor: 'pointer' }}
-                onChange={(e) => {
-                  const val = document.getElementById('sVal');
-                  if (val) val.innerText = e.target.value + 's';
-                }}
-              />
-              <span id="sVal" style={{ fontWeight: 'bold', color: '#555', minWidth: '40px' }}>30s</span>
-            </div>
+            <div className="hint" id="dlRangeStatus">Range: All files</div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600, fontSize: '13px', color: '#444' }}>
-                Activity Threshold
-              </label>
-              <input
-                type="number"
-                id="actThresh"
-                defaultValue="1800"
-                style={{ width: '100%', padding: '10px', border: '1px solid rgba(0,0,0,0.1)', background: 'rgba(255,255,255,0.8)', borderRadius: '6px' }}
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600, fontSize: '13px', color: '#444' }}>
-                Activity Time (ms)
-              </label>
-              <input
-                type="number"
-                id="actTime"
-                defaultValue="10"
-                style={{ width: '100%', padding: '10px', border: '1px solid rgba(0,0,0,0.1)', background: 'rgba(255,255,255,0.8)', borderRadius: '6px' }}
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600, fontSize: '13px', color: '#444' }}>
-                Inactivity Threshold
-              </label>
-              <input
-                type="number"
-                id="inaThresh"
-                defaultValue="1500"
-                style={{ width: '100%', padding: '10px', border: '1px solid rgba(0,0,0,0.1)', background: 'rgba(255,255,255,0.8)', borderRadius: '6px' }}
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600, fontSize: '13px', color: '#444' }}>
-                Inactivity Time (ms)
-              </label>
-              <input
-                type="number"
-                id="inaTime"
-                defaultValue="10"
-                style={{ width: '100%', padding: '10px', border: '1px solid rgba(0,0,0,0.1)', background: 'rgba(255,255,255,0.8)', borderRadius: '6px' }}
-              />
-            </div>
-          </div>
-          <div className="control-group" style={{ marginTop: '20px', borderTop: '1px solid rgba(0,0,0,0.1)', paddingTop: '20px' }}>
-            <button className="btn btn-green" id="btnSaveConfig" disabled>
-              SAVE TO DEVICE
+          <div className="control-group">
+            <select id="fileSelect" multiple className="download-file-select-hidden">
+              <option>Disconnected</option>
+            </select>
+            <div id="fileChecklist" className="file-checklist"></div>
+            <button className="btn btn-blue" id="btnRefresh" disabled title="Refresh list">
+              ↻
             </button>
-            <button className="btn btn-dark" id="btnDefaultConfig" disabled>
-              RESET DEFAULTS
+            <button className="btn btn-green" id="btnDownload" disabled>
+              DOWNLOAD
             </button>
-            <button className="btn btn-blue" id="btnSyncTime" disabled style={{ marginLeft: 'auto' }}>
-              SYNC RTC TIME
+            <button className="btn btn-red" id="btnDelete" disabled>
+              DELETE
+            </button>
+            <button className="btn btn-orange" id="btnTranscribe" style={{ display: 'none' }}>
+              TRANSCRIBE
             </button>
           </div>
         </div>

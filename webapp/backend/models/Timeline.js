@@ -1,89 +1,76 @@
-const { db } = require('../database/db');
+const { supabase } = require('../database/supabase');
 
 class Timeline {
   static async create(userId, deviceId = null) {
-    console.log('[DB-DEBUG] Timeline.create', { userId, deviceId });
-    return new Promise((resolve, reject) => {
-      db.run(
-        `INSERT INTO timelines (user_id, device_id, date_generated) VALUES (?, ?, datetime('now'))`,
-        [userId, deviceId],
-        function(err) {
-          if (err) reject(err);
-          else resolve({ id: this.lastID, userId, deviceId });
-        }
-      );
-    });
+    const { data, error } = await supabase
+      .from('timelines')
+      .insert({
+        user_id: userId,
+        device_id: deviceId,
+        // date_generated, created_at, updated_at default to NOW() in DB
+      })
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 
   static async findById(id) {
-    return new Promise((resolve, reject) => {
-      db.get(
-        `SELECT * FROM timelines WHERE id = ?`,
-        [id],
-        (err, row) => {
-          if (err) reject(err);
-          else resolve(row);
-        }
-      );
-    });
+    const { data, error } = await supabase
+      .from('timelines')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    return data || null;
   }
 
   static async findByUserId(userId) {
-    return new Promise((resolve, reject) => {
-      db.all(
-        `SELECT * FROM timelines WHERE user_id = ? ORDER BY date_generated DESC`,
-        [userId],
-        (err, rows) => {
-          if (err) reject(err);
-          else resolve(rows);
-        }
-      );
-    });
+    const { data, error } = await supabase
+      .from('timelines')
+      .select('*')
+      .eq('user_id', userId)
+      .order('date_generated', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
   }
 
   static async searchByDate(userId, date) {
-    return new Promise((resolve, reject) => {
-      db.all(
-        `SELECT * FROM timelines 
-         WHERE user_id = ? AND date(date_generated) = date(?) 
-         ORDER BY date_generated DESC`,
-        [userId, date],
-        (err, rows) => {
-          if (err) reject(err);
-          else resolve(rows);
-        }
-      );
-    });
+    const { data, error } = await supabase
+      .from('timelines')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('date_generated', `${date}T00:00:00.000Z`)
+      .lte('date_generated', `${date}T23:59:59.999Z`)
+      .order('date_generated', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
   }
 
   static async update(id, updates) {
-    const fields = Object.keys(updates).map(key => `${key} = ?`).join(', ');
-    const values = Object.values(updates);
-    values.push(id);
+    const payload = { ...updates, updated_at: new Date().toISOString() };
 
-    return new Promise((resolve, reject) => {
-      db.run(
-        `UPDATE timelines SET ${fields}, updated_at = datetime('now') WHERE id = ?`,
-        values,
-        function(err) {
-          if (err) reject(err);
-          else resolve({ id, changes: this.changes });
-        }
-      );
-    });
+    const { error } = await supabase
+      .from('timelines')
+      .update(payload)
+      .eq('id', id);
+
+    if (error) throw error;
+    return { id, changes: 1 };
   }
 
   static async delete(id) {
-    return new Promise((resolve, reject) => {
-      db.run(
-        `DELETE FROM timelines WHERE id = ?`,
-        [id],
-        function(err) {
-          if (err) reject(err);
-          else resolve({ changes: this.changes });
-        }
-      );
-    });
+    const { error } = await supabase
+      .from('timelines')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return { changes: 1 };
   }
 }
 

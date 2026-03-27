@@ -3,7 +3,7 @@ const router = express.Router();
 const { verifyToken } = require('../middleware/auth');
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
-const { db } = require('../database/db');
+const { supabase } = require('../database/supabase');
 
 // GET /api/user/me - current authenticated user
 router.get('/me', verifyToken, async (req, res) => {
@@ -36,26 +36,19 @@ router.put('/me', verifyToken, async (req, res) => {
       return res.json({ message: 'No changes' });
     }
 
-    const fields = Object.keys(updates).map((k) => `${k} = ?`).join(', ');
-    const values = Object.values(updates);
-    values.push(req.user.id);
+    // Supabase update
+    const { error } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('id', req.user.id);
 
-    db.run(
-      `UPDATE users SET ${fields}, created_at = created_at WHERE id = ?`,
-      values,
-      (err) => {
-        if (err) {
-          console.error('Update /user/me error', err);
-          return res.status(500).json({ error: 'Failed to update account' });
-        }
-        User.findById(req.user.id)
-          .then((refreshed) => res.json({ message: 'Account updated', user: refreshed }))
-          .catch((e) => {
-            console.error('Refetch user error', e);
-            res.json({ message: 'Account updated' });
-          });
-      }
-    );
+    if (error) {
+      console.error('Update /user/me error', error);
+      return res.status(500).json({ error: 'Failed to update account' });
+    }
+
+    const refreshed = await User.findById(req.user.id);
+    return res.json({ message: 'Account updated', user: refreshed });
   } catch (err) {
     console.error('Update /user/me error', err);
     res.status(500).json({ error: err.message || 'Failed to update account' });

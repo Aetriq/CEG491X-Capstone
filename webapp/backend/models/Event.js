@@ -1,77 +1,79 @@
-const { db } = require('../database/db');
+const { supabase } = require('../database/supabase');
 
 class Event {
   static async create(timelineId, eventData) {
     console.log('[DB-DEBUG] Event.create', { timelineId, eventNumber: eventData?.eventNumber, time: eventData?.time });
-    const { eventNumber, time, transcript, latitude, longitude, audioFilePath, audioDuration } = eventData;
+    const {
+      eventNumber,
+      time,
+      transcript,
+      latitude,
+      longitude,
+      audioFilePath,
+      audioDuration
+    } = eventData;
 
-    return new Promise((resolve, reject) => {
-      db.run(
-        `INSERT INTO events (timeline_id, event_number, time, transcript, latitude, longitude, audio_file_path, audio_duration)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [timelineId, eventNumber, time, transcript, latitude, longitude, audioFilePath, audioDuration],
-        function(err) {
-          if (err) reject(err);
-          else resolve({ id: this.lastID, timelineId, ...eventData });
-        }
-      );
-    });
+    const { data, error } = await supabase
+      .from('events')
+      .insert({
+        timeline_id: timelineId,
+        event_number: eventNumber,
+        time,
+        transcript,
+        latitude,
+        longitude,
+        audio_file_path: audioFilePath,
+        audio_duration: audioDuration
+      })
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 
   static async findByTimelineId(timelineId) {
-    return new Promise((resolve, reject) => {
-      db.all(
-        `SELECT * FROM events WHERE timeline_id = ? ORDER BY event_number ASC`,
-        [timelineId],
-        (err, rows) => {
-          if (err) reject(err);
-          else resolve(rows);
-        }
-      );
-    });
+    const { data, error } = await supabase
+      .from('events')
+      .select('*')
+      .eq('timeline_id', timelineId)
+      .order('event_number', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
   }
 
   static async findById(id) {
-    return new Promise((resolve, reject) => {
-      db.get(
-        `SELECT * FROM events WHERE id = ?`,
-        [id],
-        (err, row) => {
-          if (err) reject(err);
-          else resolve(row);
-        }
-      );
-    });
+    const { data, error } = await supabase
+      .from('events')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    return data || null;
   }
 
   static async update(id, updates) {
-    const fields = Object.keys(updates).map(key => `${key} = ?`).join(', ');
-    const values = Object.values(updates);
-    values.push(id);
+    const payload = { ...updates, updated_at: new Date().toISOString() };
 
-    return new Promise((resolve, reject) => {
-      db.run(
-        `UPDATE events SET ${fields}, updated_at = datetime('now') WHERE id = ?`,
-        values,
-        function(err) {
-          if (err) reject(err);
-          else resolve({ id, changes: this.changes });
-        }
-      );
-    });
+    const { error } = await supabase
+      .from('events')
+      .update(payload)
+      .eq('id', id);
+
+    if (error) throw error;
+    return { id, changes: 1 };
   }
 
   static async delete(id) {
-    return new Promise((resolve, reject) => {
-      db.run(
-        `DELETE FROM events WHERE id = ?`,
-        [id],
-        function(err) {
-          if (err) reject(err);
-          else resolve({ changes: this.changes });
-        }
-      );
-    });
+    const { error } = await supabase
+      .from('events')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return { changes: 1 };
   }
 }
 

@@ -8,6 +8,8 @@ import Home from './pages/Home';
 import TimelineView from './pages/TimelineView';
 import SettingsPage from './pages/SettingsPage';
 import AccountPage from './pages/AccountPage';
+import { DialogProvider } from './contexts/DialogContext';
+import { BleConnectionProvider } from './contexts/BleConnectionContext';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -36,39 +38,43 @@ function App() {
 
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
-          <Route path="/home" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route
-            path="/menu"
-            element={
-              <PrivateRoute>
-                <Menu />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <PrivateRoute>
-                <SettingsPage onBack={() => window.history.back()} />
-              </PrivateRoute>
-            }
-          />
-          <Route
-            path="/account"
-            element={
-              <PrivateRoute>
-                <AccountPage onBack={() => window.history.back()} />
-              </PrivateRoute>
-            }
-          />
-          <Route path="/timeline/:id" element={<TimelineView />} />
-          <Route path="/" element={<Navigate to="/home" />} />
-        </Routes>
-      </Router>
+      <DialogProvider>
+        <BleConnectionProvider>
+          <Router>
+            <Routes>
+              <Route path="/home" element={<Home />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route
+                path="/menu"
+                element={
+                  <PrivateRoute>
+                    <Menu />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <PrivateRoute>
+                    <SettingsPage onBack={() => window.history.back()} />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/account"
+                element={
+                  <PrivateRoute>
+                    <AccountPage onBack={() => window.history.back()} />
+                  </PrivateRoute>
+                }
+              />
+              <Route path="/timeline/:id" element={<TimelineView />} />
+              <Route path="/" element={<Navigate to="/home" />} />
+            </Routes>
+          </Router>
+        </BleConnectionProvider>
+      </DialogProvider>
     </AuthProvider>
   );
 }
