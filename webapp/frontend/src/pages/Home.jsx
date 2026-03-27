@@ -2,6 +2,10 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import './Home.css';
+
+//ONLY TEMP
+import InteractiveMap from "../components/InteractiveMap"
+
 // Attach JWT so transcribe/append persist to DB for logged-in users
 function authHeaders() {
   const t = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
@@ -1380,6 +1384,7 @@ function Home() {
               </div>
               <div className="hint">
                 Note: Web Bluetooth requires Chrome/Edge and usually `https://` or `localhost`.
+                <InteractiveMap longitude = {-75.6876174} latitude = {45.4189231} ></InteractiveMap>
               </div>
             </div>
           </div>

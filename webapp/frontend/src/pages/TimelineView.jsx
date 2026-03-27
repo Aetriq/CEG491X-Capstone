@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import AudioPlayer from '../components/AudioPlayer';
+import InteractiveMap from "../components/InteractiveMap"
 import './TimelineView.css';
 
 const API_URL = '/api';
@@ -191,7 +192,7 @@ function TimelineView() {
   }
 
   const getLocation = (lat, lon) => {
-    const searchResponse = reverseGeocode(lat, lon);
+    const searchResponse = reverseGeocode(lat, lon, "en");
 
     //WIP get location estimates
     return searchResponse.place_name;
@@ -296,6 +297,7 @@ function TimelineView() {
                   ))}
                 </tbody>
               </table>
+              <InteractiveMap longitude = {-75.6876174} latitude = {45.4189231} ></InteractiveMap>
             </div>
           </div>
         </main>
