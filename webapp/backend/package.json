@@ -9,6 +9,7 @@
     "seed:admin": "node scripts/seed-admin.js"
   },
   "dependencies": {
+    "@mapbox/mapbox-sdk": "^0.16.2",
     "@supabase/supabase-js": "^2.48.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
