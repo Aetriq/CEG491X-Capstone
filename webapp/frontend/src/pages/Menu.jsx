@@ -1,6 +1,9 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿// CEG491X-Capstone/webapp/Frontend/src/pages/Menu.jsx
+
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useTranslation } from 'react-i18next'; // NEW: i18n
 import axios from 'axios';
 import './Menu.css';
 
@@ -25,11 +28,12 @@ function sortTimelines(list, order) {
 
 function Menu() {
   const { user, logout } = useAuth();
+  const { t } = useTranslation(); // NEW: i18n
   const navigate = useNavigate();
   const [timelines, setTimelines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchDate, setSearchDate] = useState('');
-  const [sortOrder, setSortOrder] = useState('desc'); // 'desc' = newest → oldest
+  const [sortOrder, setSortOrder] = useState('desc');
 
   useEffect(() => {
     loadTimelines();
@@ -75,30 +79,30 @@ function Menu() {
   return (
     <div className="menu-container">
       <div className="sidebar">
-        <div className="logo">EchoLog</div>
+        <div className="logo">{t('appName')}</div>
         <div className="status-panel">
-          Device: Disconnected<br />
-          Status: === / ===
+          {t('device')}: {t('disconnected')}<br />
+          {t('status')}: === / ===
         </div>
         <div className="nav">
-          <div className="menu-item active" onClick={() => navigate('/home')}>Home</div>
-          <div className="menu-item" onClick={() => navigate('/home')}>EchoLog Device</div>
-          <div className="menu-item" onClick={() => navigate('/settings')}>Config Settings</div>
-          <div className="menu-item" onClick={() => navigate('/account')}>Account</div>
+          <div className="menu-item active" onClick={() => navigate('/home')}>{t('home')}</div>
+          <div className="menu-item" onClick={() => navigate('/home')}>{t('echoLogDevice')}</div>
+          <div className="menu-item" onClick={() => navigate('/settings')}>{t('configSettings')}</div>
+          <div className="menu-item" onClick={() => navigate('/account')}>{t('account')}</div>
         </div>
         <div className="user-panel">
           <div className="avatar-circle">
             {user?.username ? user.username.charAt(0).toUpperCase() : '👤'}
           </div>
-          <div className="username">{user?.username || 'guest'}</div>
-          <div className="logout" onClick={handleLogout}>Logout</div>
+          <div className="username">{user?.username || t('guest')}</div>
+          <div className="logout" onClick={handleLogout}>{t('logout')}</div>
         </div>
       </div>
 
       <div className="main-content">
         <div className="welcome-hero">
-          <h1>Welcome {user?.username || 'User'}</h1>
-          <p>Manage your timelines and recordings</p>
+          <h1>{t('welcome')} {user?.username || t('user')}</h1>
+          <p>{t('manageTimelines')}</p>
         </div>
 
         <div className="search-section">
@@ -108,8 +112,8 @@ function Menu() {
             onChange={(e) => setSearchDate(e.target.value)}
             className="search-input"
           />
-          <button onClick={handleSearch} className="btn btn-blue">Search by Date</button>
-          <button onClick={loadTimelines} className="btn btn-green">Show All</button>
+          <button onClick={handleSearch} className="btn btn-blue">{t('searchByDate')}</button>
+          <button onClick={loadTimelines} className="btn btn-green">{t('showAll')}</button>
           <select
             className="search-input"
             value={sortOrder}
@@ -119,30 +123,32 @@ function Menu() {
               setTimelines((prev) => sortTimelines(prev, order));
             }}
           >
-            <option value="desc">Newest → Oldest</option>
-            <option value="asc">Oldest → Newest</option>
+            <option value="desc">{t('newestFirst')}</option>
+            <option value="asc">{t('oldestFirst')}</option>
           </select>
         </div>
 
         <div className="timelines-section">
-          <h2>Your Timelines</h2>
+          <h2>{t('yourTimelines')}</h2>
           {loading ? (
-            <div>Loading timelines...</div>
+            <div>{t('loading')}</div>
           ) : safeList.length === 0 ? (
-            <div className="empty-state">No timelines found. Connect a device on <Link to="/home">Home</Link> to generate one.</div>
+            <div className="empty-state">
+              {t('noTimelinesFound')} <Link to="/home">{t('connectDevice')}</Link> {t('toGenerate')}.
+            </div>
           ) : (
             <div className="timelines-grid">
               {safeList.map((timeline) => (
                 <div key={timeline.id} className="timeline-card" onClick={() => handleViewTimeline(timeline.id)}>
                   <div className="timeline-header">
-                    <h3>Timeline #{timeline.id}</h3>
+                    <h3>{t('timeline')} #{timeline.id}</h3>
                     <span className="timeline-date">
-                      {timeline.date_generated ? new Date(timeline.date_generated).toLocaleDateString() : 'â€”'}
+                      {timeline.date_generated ? new Date(timeline.date_generated).toLocaleDateString() : '—'}
                     </span>
                   </div>
                   <div className="timeline-info">
-                    <p>Device: {timeline.device_id || 'N/A'}</p>
-                    <p>Created: {timeline.created_at ? new Date(timeline.created_at).toLocaleString() : 'â€”'}</p>
+                    <p>{t('device')}: {timeline.device_id || 'N/A'}</p>
+                    <p>{t('created')}: {timeline.created_at ? new Date(timeline.created_at).toLocaleString() : '—'}</p>
                   </div>
                 </div>
               ))}

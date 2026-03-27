@@ -1,0 +1,121 @@
+.splash-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #1a7199 0%, #0d3d54 100%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.splash-content {
+  text-align: center;
+  color: white;
+}
+
+.logo-container {
+  margin-bottom: 40px;
+}
+
+.logo-circle {
+  width: 100px;
+  height: 100px;
+  margin: 0 auto 20px;
+  position: relative;
+  animation: pulse 2s infinite;
+}
+
+.logo-circle:before {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  animation: ripple 2s infinite;
+}
+
+.logo-circle:after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  animation: ripple 2s infinite 0.5s;
+}
+
+.logo-inner {
+  width: 60px;
+  height: 60px;
+  background: white;
+  border-radius: 50%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 24px;
+  font-weight: bold;
+  color: #1a7199;
+}
+
+.logo-text {
+  font-size: 48px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  margin-bottom: 10px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.loading-spinner {
+  margin: 30px 0;
+}
+
+.spinner-circle {
+  width: 50px;
+  height: 50px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top: 4px solid white;
+  border-radius: 50%;
+  margin: 0 auto 15px;
+  animation: spin 1s linear infinite;
+}
+
+.spinner-text {
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.version-info {
+  margin-top: 40px;
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+.version-info .subtext {
+  font-size: 12px;
+  margin-top: 5px;
+  opacity: 0.5;
+}
+
+/* Animations */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+@keyframes ripple {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.5); opacity: 0; }
+}

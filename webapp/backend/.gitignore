@@ -1,3 +1,4 @@
+#CEG491X-Capstone/webapp/Backend/.env.example 
 node_modules/
 .env
 database/echolog.db
