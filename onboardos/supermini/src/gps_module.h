@@ -26,5 +26,6 @@
 void gps_init(void);
 void gps_deinit(void);
 void gps_get_coords_str(char* buf);
+void gps_force_sleep(void);
 
 #endif

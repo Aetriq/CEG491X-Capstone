@@ -37,6 +37,7 @@
 #include <sys/time.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include "esp_bt.h"
 #include "esp_gap_ble_api.h"
 #include "esp_gatts_api.h"
@@ -48,6 +49,7 @@
 #include "rtc_module.h"
 #include "config_manager.h"
 #include "self_test.h"
+#include "gps_module.h"
 
 #define MOUNT_POINT "/sdcard"
 #define TRANSFER_BLOCK_SIZE 490
@@ -58,6 +60,9 @@ static const uint8_t char_cmd_uuid[16] = {0xa8,0x26,0x1b,0x36,0x07,0xea,0xf5,0xb
 static const uint8_t char_data_uuid[16] = {0x3b,0x70,0x7c,0x68,0xb9,0x70,0x42,0x94,0x22,0x4c,0xc4,0x03,0x7c,0x28,0x9a,0x82};
 static const uint8_t char_upload_uuid[16] = {0x0f,0x41,0xb3,0x04,0x10,0x00,0x20,0x81,0x03,0x49,0x83,0x58,0x12,0x1b,0x2e,0xce};
 enum { IDX_SVC, IDX_CHAR_CMD, IDX_CHAR_VAL_CMD, IDX_CHAR_DATA, IDX_CHAR_VAL_DATA, IDX_CHAR_CFG_DATA, IDX_CHAR_UPLOAD, IDX_CHAR_VAL_UPLOAD, HRS_IDX_NB };
+
+typedef struct { uint16_t len; uint8_t data[512]; } up_chunk_t;
+QueueHandle_t up_queue = NULL;
 
 static uint16_t conn_id = 0, echo_handle_table[HRS_IDX_NB];
 static esp_gatt_if_t gatts_if_handle = 0;
@@ -73,7 +78,12 @@ esp_err_t send_notification(uint8_t *data, size_t len) {
     if(device_connected) return esp_ble_gatts_send_indicate(gatts_if_handle, conn_id, echo_handle_table[IDX_CHAR_VAL_DATA], len, data, false);
     return ESP_FAIL;
 }
-void send_eof() { send_notification((uint8_t*)"EOF", 3); }
+
+void send_eof() { 
+    while(send_notification((uint8_t*)"EOF", 3) != ESP_OK && device_connected) { 
+        vTaskDelay(pdMS_TO_TICKS(20)); 
+    } 
+}
 
 static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param) {
     if(event == ESP_GAP_BLE_ADV_DATA_SET_COMPLETE_EVT) esp_ble_gap_start_advertising(&(esp_ble_adv_params_t){.adv_int_min=0x20, .adv_int_max=0x40, .adv_type=ADV_TYPE_IND, .own_addr_type=BLE_ADDR_TYPE_PUBLIC, .channel_map=ADV_CHNL_ALL, .adv_filter_policy=ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY});
@@ -101,7 +111,8 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
         case ESP_GATTS_CREAT_ATTR_TAB_EVT: memcpy(echo_handle_table, param->add_attr_tab.handles, sizeof(echo_handle_table)); esp_ble_gatts_start_service(echo_handle_table[IDX_SVC]); break;
         case ESP_GATTS_CONNECT_EVT: {
             conn_id=param->connect.conn_id; device_connected=true; sys_led_state = LED_BT_PAIRED;
-            esp_ble_conn_update_params_t conn_params={0}; memcpy(conn_params.bda, param->connect.remote_bda, sizeof(esp_bd_addr_t)); conn_params.min_int=0x06; conn_params.max_int=0x0C; conn_params.latency=0; conn_params.timeout=400;
+            esp_ble_conn_update_params_t conn_params={0}; memcpy(conn_params.bda, param->connect.remote_bda, sizeof(esp_bd_addr_t)); 
+            conn_params.min_int=0x0C; conn_params.max_int=0x18; conn_params.latency=0; conn_params.timeout=400;
             esp_ble_gap_update_conn_params(&conn_params); esp_ble_gatt_set_local_mtu(517); break;
         }
         case ESP_GATTS_DISCONNECT_EVT:
@@ -110,7 +121,7 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
             esp_ble_gap_start_advertising(&(esp_ble_adv_params_t){.adv_int_min=0x20, .adv_int_max=0x40, .adv_type=ADV_TYPE_IND, .own_addr_type=BLE_ADDR_TYPE_PUBLIC, .channel_map=ADV_CHNL_ALL, .adv_filter_policy=ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY}); break;
         case ESP_GATTS_WRITE_EVT:
             if(param->write.handle==echo_handle_table[IDX_CHAR_VAL_CMD]) { int len=(param->write.len<sizeof(pending_cmd)-1)?param->write.len:sizeof(pending_cmd)-1; memcpy(pending_cmd, param->write.value, len); pending_cmd[len]=0; cmd_ready=true; }
-            else if(param->write.handle==echo_handle_table[IDX_CHAR_VAL_UPLOAD]) { if(is_uploading&&transfer_file) { fwrite(param->write.value, 1, param->write.len, transfer_file); } }
+            else if(param->write.handle==echo_handle_table[IDX_CHAR_VAL_UPLOAD]) { if(is_uploading && up_queue) { up_chunk_t chk; chk.len = param->write.len; memcpy(chk.data, param->write.value, chk.len); xQueueSendFromISR(up_queue, &chk, NULL); } }
             if(param->write.need_rsp) { esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, ESP_GATT_OK, NULL); } break;
         default: break;
     }
@@ -118,13 +129,13 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
 
 /* ==================== 4.0 Command Processing Task ==================== */
 void process_command_task(void *pvParameters) {
-    uint8_t *fileBuf = malloc(TRANSFER_BLOCK_SIZE); char filepath[300];
+    uint8_t *fileBuf = malloc(TRANSFER_BLOCK_SIZE); char filepath[300]; int dl_len = 0; up_chunk_t chk;
     
     while(get_system_mode() == MODE_BLUETOOTH) {
         if(cmd_ready) {
             if(!strcmp(pending_cmd, "ls")) { DIR *dir = opendir(MOUNT_POINT); if(dir) { struct dirent *entry; while((entry=readdir(dir))) { if(entry->d_type==DT_REG) { snprintf(filepath, sizeof(filepath), "%s/%s", MOUNT_POINT, entry->d_name); struct stat st; if(!stat(filepath, &st)) { char line[300]; int len=snprintf(line, sizeof(line), "%s|%ld", entry->d_name, st.st_size); send_notification((uint8_t*)line, len); vTaskDelay(pdMS_TO_TICKS(20)); } } } closedir(dir); } send_eof(); }
-            else if(!strncmp(pending_cmd, "get ", 4)) { char *fname = pending_cmd+4; snprintf(filepath, sizeof(filepath), "%s/%s", MOUNT_POINT, (fname[0]=='/')?fname+1:fname); if(transfer_file) { fclose(transfer_file); } transfer_file = fopen(filepath, "rb"); if(transfer_file) { is_downloading = true; } else { send_eof(); } }
-            else if(!strncmp(pending_cmd, "upload ", 7)) { char *fname = pending_cmd+7; snprintf(filepath, sizeof(filepath), "%s/%s", MOUNT_POINT, (fname[0]=='/')?fname+1:fname); if(transfer_file) { fclose(transfer_file); } remove(filepath); transfer_file = fopen(filepath, "wb"); if(transfer_file) { is_uploading = true; send_notification((uint8_t*)"READY", 5); } else { send_notification((uint8_t*)"ERROR", 5); } }
+            else if(!strncmp(pending_cmd, "get ", 4)) { char *fname = pending_cmd+4; snprintf(filepath, sizeof(filepath), "%s/%s", MOUNT_POINT, (fname[0]=='/')?fname+1:fname); if(transfer_file) { fclose(transfer_file); } transfer_file = fopen(filepath, "rb"); if(transfer_file) { is_downloading = true; dl_len = 0; } else { send_eof(); } }
+            else if(!strncmp(pending_cmd, "upload ", 7)) { char *fname = pending_cmd+7; snprintf(filepath, sizeof(filepath), "%s/%s", MOUNT_POINT, (fname[0]=='/')?fname+1:fname); if(transfer_file) { fclose(transfer_file); } remove(filepath); transfer_file = fopen(filepath, "wb"); if(transfer_file) { is_uploading = true; xQueueReset(up_queue); send_notification((uint8_t*)"READY", 5); } else { send_notification((uint8_t*)"ERROR", 5); } }
             else if(!strcmp(pending_cmd, "end_upload")) { if(transfer_file) { fclose(transfer_file); transfer_file = NULL; } is_uploading = false; send_eof(); }
             else if(!strncmp(pending_cmd, "del ", 4)) { char *fname = pending_cmd+4; snprintf(filepath, sizeof(filepath), "%s/%s", MOUNT_POINT, (fname[0]=='/')?fname+1:fname); remove(filepath); send_eof(); }
             else if(!strncmp(pending_cmd, "cfg_rec ", 8)) { device_config_t cfg; load_config(&cfg); cfg.record_length_sec = atoi(pending_cmd+8); save_config(&cfg); send_eof(); }
@@ -133,11 +144,27 @@ void process_command_task(void *pvParameters) {
             else if(!strcmp(pending_cmd, "selftest")) { send_notification((uint8_t*)"TEST_START", 10); run_self_test(); send_eof(); }
             cmd_ready = false;
         }
-        if(is_downloading && device_connected && transfer_file) {
-            int len = fread(fileBuf, 1, TRANSFER_BLOCK_SIZE, transfer_file);
-            if(len > 0) { esp_err_t err = send_notification(fileBuf, len); if(err == ESP_FAIL || err == ESP_ERR_NO_MEM) { fseek(transfer_file, -len, SEEK_CUR); vTaskDelay(1); } }
-            else { fclose(transfer_file); transfer_file = NULL; is_downloading = false; send_eof(); }
-        } else { vTaskDelay(pdMS_TO_TICKS(10)); }
+        
+        if(is_uploading && transfer_file && xQueueReceive(up_queue, &chk, 0)) { 
+            fwrite(chk.data, 1, chk.len, transfer_file); 
+        }
+        else if(is_downloading && device_connected && transfer_file) {
+            if(dl_len == 0) dl_len = fread(fileBuf, 1, TRANSFER_BLOCK_SIZE, transfer_file);
+            
+            if(dl_len > 0) {
+                esp_err_t err = send_notification(fileBuf, dl_len);
+                if(err == ESP_OK) {
+                    dl_len = 0; 
+                    vTaskDelay(pdMS_TO_TICKS(4)); 
+                } else {
+                    vTaskDelay(pdMS_TO_TICKS(20)); 
+                }
+            } else { 
+                fclose(transfer_file); transfer_file = NULL; is_downloading = false; send_eof(); 
+            }
+        } else { 
+            vTaskDelay(pdMS_TO_TICKS(10)); 
+        }
     }
     
     free(fileBuf); vTaskDelete(NULL); 
@@ -145,10 +172,14 @@ void process_command_task(void *pvParameters) {
 
 /* ==================== 5.0 Bluetooth Setup & Main ==================== */
 void bluetooth_mode_main() {
+    gps_force_sleep();
     park_cs_pins(); 
+    gpio_set_pull_mode(SPI_PIN_NUM_MISO, GPIO_PULLUP_ONLY); gpio_set_pull_mode(SPI_PIN_NUM_MOSI, GPIO_PULLUP_ONLY); gpio_set_pull_mode(SPI_PIN_NUM_CLK, GPIO_PULLUP_ONLY);
+    
+    if(!up_queue) up_queue = xQueueCreate(20, sizeof(up_chunk_t));
 
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {.format_if_mount_failed=false, .max_files=5, .allocation_unit_size=16*1024};
-    sdmmc_host_t host = SDSPI_HOST_DEFAULT(); host.slot = SPI2_HOST; host.max_freq_khz = 4000;
+    sdmmc_host_t host = SDSPI_HOST_DEFAULT(); host.slot = SPI2_HOST; host.max_freq_khz = 20000;
     spi_bus_config_t bus_cfg = {.mosi_io_num=SPI_PIN_NUM_MOSI, .miso_io_num=SPI_PIN_NUM_MISO, .sclk_io_num=SPI_PIN_NUM_CLK, .quadwp_io_num=-1, .quadhd_io_num=-1, .max_transfer_sz=4000};
     spi_bus_initialize(host.slot, &bus_cfg, SPI_DMA_CH_AUTO);
     sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT(); slot_config.gpio_cs=SD_PIN_NUM_CS; slot_config.host_id=host.slot;
@@ -161,11 +192,11 @@ void bluetooth_mode_main() {
 
     while(get_system_mode() == MODE_BLUETOOTH) { vTaskDelay(pdMS_TO_TICKS(250)); } 
 
-    // Disconnect safely and unmount to prevent file corruption before reboot
     if(device_connected) { esp_ble_gatts_close(gatts_if_handle, conn_id); }
     vTaskDelay(pdMS_TO_TICKS(500)); 
     if(transfer_file) { fclose(transfer_file); transfer_file = NULL; }
     if(card) { esp_vfs_fat_sdcard_unmount(MOUNT_POINT, card); card = NULL; }
+    if(up_queue) { vQueueDelete(up_queue); up_queue = NULL; }
     
     return;
 }

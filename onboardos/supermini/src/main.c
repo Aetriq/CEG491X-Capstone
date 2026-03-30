@@ -37,6 +37,7 @@
 #include "globals.h"
 #include "bluetooth_mode.h"
 #include "recording_mode.h"
+#include "gps_module.h"
 
 /* ==================== 2.0 Variables & State Logic ==================== */
 led_strip_handle_t led_strip;
@@ -83,7 +84,7 @@ void app_main(void) {
     adc_oneshot_unit_init_cfg_t init_config = { .unit_id = ADC_UNIT_1 }; ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config, &adc_handle));
     adc_oneshot_chan_cfg_t config = { .bitwidth = ADC_BITWIDTH_DEFAULT, .atten = ADC_ATTEN_DB_12 }; ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, ADC_CHANNEL_0, &config));
 
-    if (get_system_mode() == MODE_SLEEP) { led_strip_clear(led_strip); led_strip_refresh(led_strip); esp_sleep_enable_timer_wakeup(500000); esp_deep_sleep_start(); }
+    if (get_system_mode() == MODE_SLEEP) { led_strip_clear(led_strip); led_strip_refresh(led_strip); gps_force_sleep(); esp_sleep_enable_timer_wakeup(500000); esp_deep_sleep_start(); }
 
     xTaskCreate(persistent_led_task, "sys_led", 2048, NULL, 5, NULL);
 
@@ -92,7 +93,7 @@ void app_main(void) {
         if (mode == MODE_BLUETOOTH) { sys_led_state = LED_BT_UNPAIRED; bluetooth_mode_main(); } 
         else if (mode == MODE_RECORDING) { sys_led_state = LED_REC_IDLE; recording_mode_main(); }
         else if (mode == MODE_FLOATING) { sys_led_state = LED_SYS_FLOATING; vTaskDelay(pdMS_TO_TICKS(250)); continue; }
-        else if (mode == MODE_SLEEP) { sys_led_state = LED_IDLE; vTaskDelay(pdMS_TO_TICKS(100)); esp_sleep_enable_timer_wakeup(500000); esp_deep_sleep_start(); }
+        else if (mode == MODE_SLEEP) { sys_led_state = LED_IDLE; vTaskDelay(pdMS_TO_TICKS(100)); gps_force_sleep(); esp_sleep_enable_timer_wakeup(500000); esp_deep_sleep_start(); }
         
         sys_led_state = LED_IDLE; vTaskDelay(pdMS_TO_TICKS(500)); esp_restart();
     }

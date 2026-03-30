@@ -86,27 +86,35 @@ static void gps_read_task(void *pvParameters) {
 
 void gps_init(void) {
     if (gps_running) return;
-    
-    // PERMANENTLY gag the logger to protect pins 43 and 44 from UART collisions
     esp_log_level_set("*", ESP_LOG_NONE);
-
     i2c_config_t gps_conf = { .mode = I2C_MODE_MASTER, .sda_io_num = I2C_GPS_SDA_IO, .scl_io_num = I2C_GPS_SCL_IO, .sda_pullup_en = 1, .scl_pullup_en = 1, .master.clk_speed = 100000 };
     i2c_param_config(I2C_GPS_NUM, &gps_conf); 
     i2c_driver_install(I2C_GPS_NUM, gps_conf.mode, 0, 0, 0);
     
+    uint8_t dummy = 0; i2c_master_write_to_device(I2C_GPS_NUM, PA1010D_ADDR, &dummy, 1, pdMS_TO_TICKS(100));
+    vTaskDelay(pdMS_TO_TICKS(50));
+    
     gps_running = true; 
-    
-    // Bumped stack to 8192 to safely handle FPU string parsing
     xTaskCreate(gps_read_task, "gps_trk", 8192, NULL, 4, &gps_task_handle);
-    
-    // DO NOT UN-GAG THE LOGGER!
 }
 
 void gps_deinit(void) {
     if (gps_running) {
         gps_running = false; vTaskDelay(pdMS_TO_TICKS(200)); 
+        const char* sleep_cmd = "$PMTK161,0*28\r\n";
+        i2c_master_write_to_device(I2C_GPS_NUM, PA1010D_ADDR, (const uint8_t*)sleep_cmd, strlen(sleep_cmd), pdMS_TO_TICKS(100));
         i2c_driver_delete(I2C_GPS_NUM); gps_task_handle = NULL;
     }
+}
+
+void gps_force_sleep(void) {
+    if (gps_running) return; 
+    esp_log_level_set("*", ESP_LOG_NONE);
+    i2c_config_t gps_conf = { .mode = I2C_MODE_MASTER, .sda_io_num = I2C_GPS_SDA_IO, .scl_io_num = I2C_GPS_SCL_IO, .sda_pullup_en = 1, .scl_pullup_en = 1, .master.clk_speed = 100000 };
+    i2c_param_config(I2C_GPS_NUM, &gps_conf); i2c_driver_install(I2C_GPS_NUM, gps_conf.mode, 0, 0, 0);
+    const char* sleep_cmd = "$PMTK161,0*28\r\n";
+    i2c_master_write_to_device(I2C_GPS_NUM, PA1010D_ADDR, (const uint8_t*)sleep_cmd, strlen(sleep_cmd), pdMS_TO_TICKS(100));
+    i2c_driver_delete(I2C_GPS_NUM);
 }
 
 void gps_get_coords_str(char* buf) {
