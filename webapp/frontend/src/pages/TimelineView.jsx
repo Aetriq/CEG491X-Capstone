@@ -8,6 +8,7 @@ import { useBle } from '../contexts/BleConnectionContext';
 import { useTranslation } from 'react-i18next'; // NEW: i18n
 import axios from 'axios';
 import AudioPlayer from '../components/AudioPlayer';
+import InteractiveMap from "../components/InteractiveMap"
 import './TimelineView.css';
 
 const API_URL = '/api';
@@ -235,6 +236,20 @@ function TimelineView() {
     return `${Math.abs(lat).toFixed(2)}° ${latDir}\n${Math.abs(lon).toFixed(2)}° ${lonDir}`;
   };
 
+  //Returns JSON with format {place_name, coordinates, type}
+  //WIP update to accept language
+  const reverseGeocode = async (lat, long) =>{
+    const response = await axios.get(`${API_URL}/reverseGeocode/${lat}&${long}`);
+    return response;
+  }
+
+  const getLocation = (lat, lon) => {
+    const searchResponse = reverseGeocode(lat, lon, "en");
+
+    //WIP get location estimates
+    return searchResponse.place_name;
+  }
+
   if (loading) {
     return <div className="loading">{t('loading')}</div>;
   }
@@ -312,9 +327,9 @@ function TimelineView() {
                         )}
                       </td>
                       <td className="position">
-                        {formatCoordinates(event.latitude, event.longitude).split('\n').map((line, i) => (
-                          <div key={i}>{line}</div>
-                        ))}
+                        {<div>{getLocation(event.latitude, event.longitude)}</div>
+                        
+                        }
                       </td>
                       <td className="audio-cell">
                         {event.audio_file_path ? (
@@ -340,6 +355,7 @@ function TimelineView() {
                   ))}
                 </tbody>
               </table>
+              <InteractiveMap longitude = {-75.6876174} latitude = {45.4189231} ></InteractiveMap>
             </div>
           </div>
         </main>

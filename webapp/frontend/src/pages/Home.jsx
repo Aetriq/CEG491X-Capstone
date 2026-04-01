@@ -8,6 +8,9 @@ import { useBle } from '../contexts/BleConnectionContext';
 import { useTranslation } from 'react-i18next'; // NEW: i18n
 import './Home.css';
 
+//ONLY TEMP
+import InteractiveMap from "../components/InteractiveMap"
+
 // Attach JWT so transcribe/append persist to DB for logged-in users
 function authHeaders() {
   const t = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
@@ -223,7 +226,6 @@ function Home() {
     }
   }, [ble.isConnected]);
 
-  useEffect(() => {
   const formatBytes = (bytes) => {
     if (!bytes || bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -1211,6 +1213,36 @@ function Home() {
             <button className="btn btn-orange" id="btnTranscribe" style={{ display: 'none' }}>
               TRANSCRIBE
             </button>
+          </div>
+        </div>
+
+        <div className="card bottom-row">
+          <div className="card-header">
+            <div className="icon-box teal-icon">🔗</div>
+            <div>
+              <h3>Connect Device</h3>
+              <p className="subtext">Connect via Bluetooth Low Energy (BLE)</p>
+            </div>
+          </div>
+          <div className="connection-single">
+            <div className="conn-box">
+              <div className="conn-title">Bluetooth Connection:</div>
+              <div className="device-list" id="bleList">
+                Status: Not Connected
+              </div>
+              <div>
+                <button className="btn btn-orange" id="btnScan">
+                  SCAN &amp; CONNECT
+                </button>
+                <button className="btn btn-red" id="btnDisconnect" style={{ display: 'none' }}>
+                  DISCONNECT
+                </button>
+              </div>
+              <div className="hint">
+                Note: Web Bluetooth requires Chrome/Edge and usually `https://` or `localhost`.
+                <InteractiveMap longitude = {-75.6876174} latitude = {45.4189231} ></InteractiveMap>
+              </div>
+            </div>
           </div>
         </div>
       </div>
