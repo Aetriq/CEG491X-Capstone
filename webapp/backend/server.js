@@ -30,6 +30,7 @@ const audioRoutes = require('./routes/audio');
 const userRoutes = require('./routes/user');
 const settingsRoutes = require('./routes/settings');
 const adminRoutes = require('./routes/admin');
+const mapsRoutes = require('./routes/maps');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -57,6 +58,7 @@ app.use('/api/audio', audioRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api', mapsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
