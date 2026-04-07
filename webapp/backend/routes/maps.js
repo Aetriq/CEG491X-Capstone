@@ -3,27 +3,41 @@ const mbxGeocoding = require("@mapbox/mapbox-sdk/services/geocoding");
 
 const router = express.Router();
 
-// Initialize reverse geocoding client once
-const geocodingClient = mbxGeocoding({
-  accessToken: process.env.MAPBOX_API_KEY
-});
+// Initialize reverse geocoding client safely (do not crash server if key is missing).
+function getGeocodingClient() {
+  const accessToken = process.env.MAPBOX_API_KEY || process.env.VITE_MAPBOX_API_KEY;
+  if (!accessToken) {
+    return null;
+  }
+  return mbxGeocoding({ accessToken });
+}
 
 // GET /reverseGeocode?lng=-122.42&lat=37.78&lang="en"
 router.get("/reverseGeocode", async (req, res) => {
   try {
+    const geocodingClient = getGeocodingClient();
+    if (!geocodingClient) {
+      return res.status(503).json({
+        error: "Mapbox API key is not configured on backend"
+      });
+    }
+
     const { lng, lat, lang } = req.query;
+    const lngNum = Number(lng);
+    const latNum = Number(lat);
+    const language = typeof lang === "string" && lang.trim() ? lang.trim() : "en";
 
     // Validate inputs
-    if (!lng || !lat || !lang) {
+    if (!Number.isFinite(lngNum) || !Number.isFinite(latNum)) {
       return res.status(400).json({
-        error: "Missing lng or lat query parameters"
+        error: "Invalid lng or lat query parameters"
       });
     }
 
     const response = await geocodingClient
       .reverseGeocode({
-        query: [parseFloat(lng), parseFloat(lat)],
-        language: lang,
+        query: [lngNum, latNum],
+        language: [language],
         limit: 1,
         type: ["place", "locality", "neighborhood", "street", "address"] 
       })
@@ -46,10 +60,12 @@ router.get("/reverseGeocode", async (req, res) => {
     }
 
   } catch (err) {
-    console.error(err.message);
+    const statusCode = Number(err?.statusCode) || Number(err?.status) || 500;
+    const safeStatus = statusCode >= 400 && statusCode < 600 ? statusCode : 500;
+    console.error("reverseGeocode error:", err?.message || err);
 
-    return res.status(500).json({
-      error: "Server error"
+    return res.status(safeStatus).json({
+      error: err?.message || "Server error"
     });
   }
 });

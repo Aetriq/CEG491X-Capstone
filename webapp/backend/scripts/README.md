@@ -1,3 +1,5 @@
+#CEG491X-Capstone/webapp/Backend/scripts/README.md
+
 # EchoLog Python Scripts
 
 The Node backend runs these scripts by calling Python. It tries, in order: `python`, `python3`, then on Windows `py -3`. If your packages (numpy, scipy, openai-whisper) are installed in a different interpreter (e.g. the one used when you run `pip install`), set:

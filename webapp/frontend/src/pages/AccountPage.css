@@ -1,3 +1,5 @@
+/* CEG491X-Capstone/webapp/Frontend/src/pages/AccountPage.css */
+
 .account-container {
   padding: 30px 40px;
   width: 100%;
@@ -120,6 +122,33 @@
   font-size: 14px;
 }
 
+.password-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-wrapper input {
+  width: 100%;
+  padding-right: 40px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.password-toggle:hover {
+  color: #1a7199;
+}
+
 .password-strength {
   margin-top: 10px;
   font-size: 12px;
@@ -137,15 +166,42 @@
   overflow: hidden;
 }
 
-.strength-fill.weak {
-  width: 30%;
+.strength-fill {
   height: 100%;
+  width: 0;
+  transition: width 0.25s ease, background-color 0.25s ease;
+}
+
+.strength-fill.none {
+  background: transparent;
+}
+
+.strength-fill.weak {
   background: #f97316;
+}
+
+.strength-fill.medium {
+  background: #eab308;
+}
+
+.strength-fill.strong {
+  background: #22c55e;
 }
 
 .strength-text {
   margin-top: 4px;
+}
+
+.strength-text.weak {
   color: #f97316;
+}
+
+.strength-text.medium {
+  color: #ca8a04;
+}
+
+.strength-text.strong {
+  color: #22c55e;
 }
 
 .account-actions {
@@ -229,5 +285,13 @@ body.dark-mode .account-card input {
   background: rgba(15, 23, 42, 0.9);
   color: #ffffff;
   border-color: rgba(148, 196, 224, 0.5);
+}
+
+body.dark-mode .password-toggle {
+  color: #cbd5e1;
+}
+
+body.dark-mode .password-toggle:hover {
+  color: #7dd3fc;
 }
 

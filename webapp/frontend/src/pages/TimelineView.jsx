@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+// CEG491X-Capstone/webapp/Frontend/src/pages/TimelineView.jsx
+
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
 import { useDialog } from '../contexts/DialogContext';
 import { useBle } from '../contexts/BleConnectionContext';
+import { useTranslation } from 'react-i18next'; // NEW: i18n
 import axios from 'axios';
 import AudioPlayer from '../components/AudioPlayer';
 import InteractiveMap from "../components/InteractiveMap"
@@ -11,7 +13,6 @@ import './TimelineView.css';
 const API_URL = '/api';
 const CACHE_KEY_PREFIX = 'echolog_timeline_';
 
-/** Parse event.time (e.g. "14:30" or "14:30:00") to minutes-from-midnight for sorting. */
 function parseTimeToMinutes(timeStr) {
   if (!timeStr || typeof timeStr !== 'string') return 0;
   const parts = timeStr.trim().split(':').map(Number);
@@ -24,7 +25,6 @@ function parseTimeToMinutes(timeStr) {
   return 0;
 }
 
-/** Sort events from earliest to latest by time, then renumber so Event column follows time order. */
 function sortEventsEarliestToLatest(events) {
   if (!Array.isArray(events) || events.length === 0) return events;
   if (events.length === 1) {
@@ -41,7 +41,6 @@ function sortEventsEarliestToLatest(events) {
   return sorted.map((ev, i) => ({ ...ev, event_number: i + 1 }));
 }
 
-/** Format a Day/Month label from an ISO datetime string. */
 function formatDayMonth(isoString) {
   if (!isoString) return '';
   const d = new Date(isoString);
@@ -54,15 +53,18 @@ function formatDayMonth(isoString) {
 function TimelineView() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
   const { showAlert } = useDialog();
   const ble = useBle();
+  const { t, i18n } = useTranslation(); // NEW: i18n
   const [timeline, setTimeline] = useState(null);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingEvent, setEditingEvent] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [isFromCache, setIsFromCache] = useState(false);
+  const [selectedEventId, setSelectedEventId] = useState(null);
+  const [selectedPlaceName, setSelectedPlaceName] = useState('');
+  const reverseGeocodeCacheRef = useRef(new Map());
 
   useEffect(() => {
     loadTimeline();
@@ -196,10 +198,6 @@ function TimelineView() {
     }
   };
 
-  // Legacy /draft/ flows used a manual "Save to database" button.
-  // With authenticated transcription, timelines are saved automatically,
-  // so we no longer expose a separate save-to-DB action in the UI.
-
   const handleEdit = (event) => {
     setEditingEvent(event.id);
     setEditForm({
@@ -208,17 +206,33 @@ function TimelineView() {
   };
 
   const handleMainMenu = () => {
-    if (user) {
-      navigate('/home');
-    } else {
-      navigate('/menu');
-    }
+    navigate('/menu');
   };
 
   const handleSaveEdit = async (eventId) => {
     try {
-      await axios.put(`${API_URL}/timelines/${id}/events/${eventId}`, editForm);
-      await loadTimeline();
+      const response = await axios.put(`${API_URL}/timelines/${id}/events/${eventId}`, editForm);
+      const updatedEvent = response?.data?.event;
+      if (updatedEvent) {
+        setEvents((prev) =>
+          prev.map((ev) => (ev.id === eventId ? { ...ev, ...updatedEvent } : ev))
+        );
+      } else {
+        await loadTimeline();
+      }
+      try {
+        const cacheKey = `${CACHE_KEY_PREFIX}${id}`;
+        const cachedRaw = localStorage.getItem(cacheKey);
+        if (cachedRaw) {
+          const parsed = JSON.parse(cachedRaw);
+          const nextEvents = (parsed.events || []).map((ev) =>
+            ev.id === eventId ? { ...ev, transcript: editForm.transcript } : ev
+          );
+          localStorage.setItem(cacheKey, JSON.stringify({ ...parsed, events: nextEvents }));
+        }
+      } catch {
+        // ignore cache update failures
+      }
       setEditingEvent(null);
       setEditForm({});
     } catch (error) {
@@ -233,42 +247,154 @@ function TimelineView() {
   };
 
   const formatCoordinates = (lat, lon) => {
-    if (!lat || !lon) return 'N/A';
-    const latDir = lat >= 0 ? 'N' : 'S';
-    const lonDir = lon >= 0 ? 'E' : 'W';
-    return `${Math.abs(lat).toFixed(2)}° ${latDir}\n${Math.abs(lon).toFixed(2)}° ${lonDir}`;
+    if (lat == null || lon == null || Number.isNaN(Number(lat)) || Number.isNaN(Number(lon))) {
+      return 'N/A';
+    }
+    const nLat = Number(lat);
+    const nLon = Number(lon);
+    const latDir = nLat >= 0 ? 'N' : 'S';
+    const lonDir = nLon >= 0 ? 'E' : 'W';
+    return `${Math.abs(nLat).toFixed(6)}° ${latDir}\n${Math.abs(nLon).toFixed(6)}° ${lonDir}`;
   };
 
-  //Returns JSON with format {place_name, coordinates, type}
-  //WIP update to accept language
-  const reverseGeocode = async (lat, long) =>{
-    const response = await axios.get(`${API_URL}/reverseGeocode/${lat}&${long}`);
-    return response;
-  }
+  const parseCoordinatesFromName = (nameOrPath) => {
+    if (!nameOrPath) return null;
+    const base = String(nameOrPath).split(/[\\/]/).pop() || '';
+    const match = base.match(/^(\d{8})_(\d{6})_(-?\d{1,9})_(-?\d{1,9})(?:\.[^.]+)?$/);
+    if (!match) return null;
+    const lat = Number(match[3]) / 1e6;
+    const lon = Number(match[4]) / 1e6;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+    return { lat, lon };
+  };
 
-  const getLocation = (lat, lon) => {
-    const searchResponse = reverseGeocode(lat, lon, "en");
+  const getEventCoordinates = (ev) => {
+    if (!ev) return null;
+    if (isValidCoordinatePair(ev.latitude, ev.longitude)) {
+      return { lat: Number(ev.latitude), lon: Number(ev.longitude) };
+    }
+    const fromName = parseCoordinatesFromName(ev.audio_file_path || ev.audioFilePath);
+    if (fromName && isValidCoordinatePair(fromName.lat, fromName.lon)) {
+      return fromName;
+    }
+    return null;
+  };
 
-    //WIP get location estimates
-    return searchResponse.place_name;
-  }
+  const isValidCoordinatePair = (lat, lon) => {
+    const nLat = Number(lat);
+    const nLon = Number(lon);
+    return (
+      Number.isFinite(nLat) &&
+      Number.isFinite(nLon) &&
+      !(nLat === 0 && nLon === 0) &&
+      Math.abs(nLat) <= 90 &&
+      Math.abs(nLon) <= 180
+    );
+  };
+
+  const selectedEvent = useMemo(
+    () => events.find((ev) => ev.id === selectedEventId) || null,
+    [events, selectedEventId]
+  );
+
+  const firstEventWithCoords = useMemo(
+    () => events.find((ev) => !!getEventCoordinates(ev)) || null,
+    [events]
+  );
+
+  useEffect(() => {
+    if (selectedEventId != null && events.some((ev) => ev.id === selectedEventId)) {
+      return;
+    }
+    if (firstEventWithCoords) {
+      setSelectedEventId(firstEventWithCoords.id);
+    } else if (events.length > 0) {
+      setSelectedEventId(events[0].id ?? null);
+    } else {
+      setSelectedEventId(null);
+    }
+  }, [events, firstEventWithCoords, selectedEventId]);
+
+  const mapTarget = useMemo(() => {
+    const candidate = selectedEvent && !!getEventCoordinates(selectedEvent)
+      ? selectedEvent
+      : firstEventWithCoords;
+
+    const coords = candidate ? getEventCoordinates(candidate) : null;
+    if (coords && isValidCoordinatePair(coords.lat, coords.lon)) {
+      return {
+        lat: Number(coords.lat),
+        lon: Number(coords.lon)
+      };
+    }
+    return { lat: 45.4189231, lon: -75.6876174 };
+  }, [selectedEvent, firstEventWithCoords]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      if (!isValidCoordinatePair(mapTarget.lat, mapTarget.lon)) {
+        setSelectedPlaceName('');
+        return;
+      }
+
+      const lang = (i18n.language || 'en').split('-')[0];
+      const cacheKey = `${mapTarget.lat.toFixed(6)},${mapTarget.lon.toFixed(6)}|${lang}`;
+      const cached = reverseGeocodeCacheRef.current.get(cacheKey);
+      if (cached) {
+        setSelectedPlaceName(cached);
+        return;
+      }
+
+      try {
+        const response = await axios.get(`${API_URL}/reverseGeocode`, {
+          params: { lng: mapTarget.lon, lat: mapTarget.lat, lang }
+        });
+        const place = response?.data?.place_name || '';
+        reverseGeocodeCacheRef.current.set(cacheKey, place);
+        if (!cancelled) {
+          setSelectedPlaceName(place);
+        }
+      } catch {
+        if (!cancelled) {
+          setSelectedPlaceName('');
+        }
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [mapTarget.lat, mapTarget.lon, i18n.language]);
 
   if (loading) {
-    return <div className="loading">Loading timeline...</div>;
+    return <div className="loading">{t('loading')}</div>;
   }
 
   if (!timeline) {
-    return <div className="error">Timeline not found</div>;
+    return <div className="error">{t('timelineNotFound')}</div>;
   }
 
   return (
     <div className="timeline-view-container">
+      <div className="floating-bg">
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+      </div>
       <div className="top-right-buttons">
-        <button onClick={handleMainMenu} className="back-btn">
+        <button onClick={handleMainMenu} className="download-btn go-saved-btn">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M15 18l-6-6 6-6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          Main Menu
+          Go to Saved Timelines
         </button>
         <button onClick={handleExport} className="download-btn">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -276,7 +402,7 @@ function TimelineView() {
             <path d="M8 11l4 4 4-4" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             <path d="M21 21H3" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          Download CSV
+          {t('exportCSV')}
         </button>
       </div>
 
@@ -309,7 +435,11 @@ function TimelineView() {
                 </thead>
                 <tbody>
                   {events.map((event, index) => (
-                    <tr key={event.id != null ? event.id : `event-${index}`}>
+                    <tr
+                      key={event.id != null ? event.id : `event-${index}`}
+                      onClick={() => setSelectedEventId(event.id)}
+                      style={selectedEventId === event.id ? { background: 'rgba(26, 113, 153, 0.14)' } : undefined}
+                    >
                       <td><span className="rownum">{event.event_number}</span></td>
                       <td className="time">
                         <div>{event.time}</div>
@@ -326,13 +456,19 @@ function TimelineView() {
                             rows="2"
                           />
                         ) : (
-                          event.transcript || 'No transcript'
+                          event.transcript || t('noTranscript')
                         )}
                       </td>
                       <td className="position">
-                        {<div>{getLocation(event.latitude, event.longitude)}</div>
-                        
-                        }
+                        {(() => {
+                          const coords = getEventCoordinates(event);
+                          const text = coords
+                            ? formatCoordinates(coords.lat, coords.lon)
+                            : 'N/A';
+                          return text.split('\n').map((line, i) => (
+                          <div key={i}>{line}</div>
+                          ));
+                        })()}
                       </td>
                       <td className="audio-cell">
                         {event.audio_file_path ? (
@@ -341,32 +477,33 @@ function TimelineView() {
                             audioFilePath={event.audio_file_path || event.audioFilePath}
                           />
                         ) : (
-                          <span className="no-audio">No audio</span>
+                          <span className="no-audio">{t('noAudio')}</span>
                         )}
                       </td>
                       <td>
                         {editingEvent === event.id ? (
                           <div className="edit-actions">
-                            <button onClick={() => handleSaveEdit(event.id)} className="btn-save">Save</button>
-                            <button onClick={handleCancelEdit} className="btn-cancel">Cancel</button>
+                            <button onClick={() => handleSaveEdit(event.id)} className="btn-save">{t('save')}</button>
+                            <button onClick={handleCancelEdit} className="btn-cancel">{t('cancel')}</button>
                           </div>
                         ) : (
-                          <button onClick={() => handleEdit(event)} className="btn-edit">Edit</button>
+                          <button onClick={() => handleEdit(event)} className="btn-edit">{t('edit')}</button>
                         )}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <InteractiveMap longitude = {-75.6876174} latitude = {45.4189231} ></InteractiveMap>
+              <div style={{ padding: '12px', fontSize: '12px', color: '#607d8b' }}>
+                {selectedPlaceName
+                  ? `Selected location: ${selectedPlaceName}`
+                  : 'Select an event with valid coordinates to preview on map'}
+              </div>
+              <InteractiveMap longitude={mapTarget.lon} latitude={mapTarget.lat} />
             </div>
           </div>
         </main>
       </div>
-      
-      {/* Timelines created while logged in are saved into the database automatically.
-          The old explicit "Save to database" / "Save Timeline" buttons have been removed
-          to simplify the UX. */}
     </div>
   );
 }

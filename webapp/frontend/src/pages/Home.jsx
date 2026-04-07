@@ -1,20 +1,18 @@
+// CEG491X-Capstone/webapp/Frontend/src/pages/Home.jsx
+
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useDialog } from '../contexts/DialogContext';
 import { useBle } from '../contexts/BleConnectionContext';
+import { useTranslation } from 'react-i18next'; // NEW: i18n
 import './Home.css';
-
-//ONLY TEMP
-import InteractiveMap from "../components/InteractiveMap"
 
 // Attach JWT so transcribe/append persist to DB for logged-in users
 function authHeaders() {
   const t = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
-
-
 
 // Global transcription queue so multiple audio files are processed sequentially
 let transcriptionQueue = Promise.resolve(null);
@@ -45,7 +43,6 @@ async function transcribeAudioQueued(audioFile, filename, recordingStartTimeISO)
       }
 
       const formData = new FormData();
-      // Provide a filename when possible so the backend can persist it meaningfully
       if (filename) {
         formData.append('audio', audioFile, filename);
       } else if (audioFile && audioFile.name) {
@@ -53,7 +50,6 @@ async function transcribeAudioQueued(audioFile, filename, recordingStartTimeISO)
       } else {
         formData.append('audio', audioFile);
       }
-      // Local card: pass file metadata time so timeline shows correct recording time
       if (recordingStartTimeISO) {
         formData.append('recording_start_time', recordingStartTimeISO);
       }
@@ -64,7 +60,6 @@ async function transcribeAudioQueued(audioFile, filename, recordingStartTimeISO)
         body: formData
       });
 
-      // For robustness, mirror the existing \"read as text then JSON\" behaviour
       const text = await response.text();
       let result = {};
       try {
@@ -92,21 +87,13 @@ async function transcribeAudioQueued(audioFile, filename, recordingStartTimeISO)
 async function appendAudioQueued(timelineId, audioFile, filename, recordingStartTimeISO) {
   transcriptionQueue = transcriptionQueue.then(async () => {
     try {
-      // Quick health check before making the request
+      // Quick health check
       try {
         const healthController = new AbortController();
-        const healthTimeout = setTimeout(() => healthController.abort(), 5000); // 5 second timeout
-        
-        const healthCheck = await fetch('/api/health', { 
-          method: 'GET',
-          signal: healthController.signal
-        });
-        
+        const healthTimeout = setTimeout(() => healthController.abort(), 5000);
+        const healthCheck = await fetch('/api/health', { signal: healthController.signal });
         clearTimeout(healthTimeout);
-        
-        if (!healthCheck.ok) {
-          throw new Error('Backend health check failed');
-        }
+        if (!healthCheck.ok) throw new Error('Backend health check failed');
       } catch (healthError) {
         if (healthError.name === 'AbortError') {
           throw new Error('Backend server health check timed out. Server may be overloaded or not responding.');
@@ -115,7 +102,6 @@ async function appendAudioQueued(timelineId, audioFile, filename, recordingStart
       }
 
       const formData = new FormData();
-      // Provide a filename when possible so the backend can persist it meaningfully
       if (filename) {
         formData.append('audio', audioFile, filename);
       } else if (audioFile && audioFile.name) {
@@ -123,27 +109,22 @@ async function appendAudioQueued(timelineId, audioFile, filename, recordingStart
       } else {
         formData.append('audio', audioFile);
       }
-      // Local card: pass file metadata time so timeline shows correct recording time
       if (recordingStartTimeISO) {
         formData.append('recording_start_time', recordingStartTimeISO);
       }
 
       let response;
       try {
-        // Create abort controller for timeout handling
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minutes timeout
-        
+        const timeoutId = setTimeout(() => controller.abort(), 600000);
         response = await fetch(`/api/audio/append/${timelineId}`, {
           method: 'POST',
           headers: authHeaders(),
           body: formData,
           signal: controller.signal
         });
-        
         clearTimeout(timeoutId);
       } catch (fetchError) {
-        // Handle network errors (ECONNRESET, ECONNREFUSED, timeout, etc.)
         if (fetchError.name === 'AbortError') {
           throw new Error('Request timeout - transcription took too long (10 minutes)');
         } else if (
@@ -161,7 +142,6 @@ async function appendAudioQueued(timelineId, audioFile, filename, recordingStart
         throw fetchError;
       }
 
-      // For robustness, mirror the existing \"read as text then JSON\" behaviour
       let text;
       try {
         text = await response.text();
@@ -185,11 +165,6 @@ async function appendAudioQueued(timelineId, audioFile, filename, recordingStart
       return result;
     } catch (error) {
       console.error('Append transcription error (queued):', error);
-      console.error('Error details:', {
-        message: error.message,
-        name: error.name,
-        stack: error.stack
-      });
       throw error;
     }
   });
@@ -202,6 +177,19 @@ function Home() {
   const { user, logout } = useAuth();
   const { showAlert, showConfirm } = useDialog();
   const ble = useBle();
+  const { setDataHandler, sendCommand: bleSendCommand, getUploadCharacteristic } = ble;
+  const { t } = useTranslation(); // NEW: i18n
+  const isAdmin = (
+    user?.is_admin === true ||
+    user?.is_admin === 1 ||
+    user?.is_admin === '1' ||
+    String(user?.role || '').toLowerCase() === 'admin'
+  );
+  const [bleConnectionStatus, setBleConnectionStatus] = useState('Disconnected (Bluetooth)');
+  const [bleDeviceName, setBleDeviceName] = useState('Not Connected');
+  const [localUploadFiles, setLocalUploadFiles] = useState([]);
+  const [localUploadStatus, setLocalUploadStatus] = useState('No files selected');
+  const [localUploadLoading, setLocalUploadLoading] = useState(false);
   const [downloadTranscribeLoading, setDownloadTranscribeLoading] = useState(false);
   const [downloadStatus, setDownloadStatus] = useState('Status: Idle');
   const downloadedFilesRef = useRef([]);
@@ -218,19 +206,19 @@ function Home() {
     const btnDelete = document.getElementById('btnDelete');
     const btnStartUpload = document.getElementById('btnStartUpload');
     const btnTranscribe = document.getElementById('btnTranscribe');
-    if (!fileSelect || !fileChecklist || !dlStatus || !btnRefresh || !btnDownload || !btnDelete || !btnStartUpload || !btnTranscribe) {
+    if (!fileSelect || !fileChecklist || !dlStatus || !btnRefresh || !btnDownload || !btnDelete || !btnTranscribe) {
       return;
     }
     if (ble.isConnected) {
       btnRefresh.disabled = false;
       btnDownload.disabled = false;
       btnDelete.disabled = false;
-      btnStartUpload.disabled = false;
+      if (btnStartUpload) btnStartUpload.disabled = false;
     } else {
       btnRefresh.disabled = true;
       btnDownload.disabled = true;
       btnDelete.disabled = true;
-      btnStartUpload.disabled = true;
+      if (btnStartUpload) btnStartUpload.disabled = true;
       fileSelect.innerHTML = '<option>Disconnected</option>';
       fileChecklist.innerHTML = '<div class="file-checklist-empty">Disconnected</div>';
       downloadedFilesRef.current = [];
@@ -242,7 +230,142 @@ function Home() {
     }
   }, [ble.isConnected]);
 
+  const formatBytes = (bytes) => {
+    if (!bytes || bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+  };
+
+  const onLocalFileChange = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      setLocalUploadFiles(files);
+      const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+      if (files.length === 1) {
+        setLocalUploadStatus(`${files[0].name} — ${formatBytes(files[0].size)}`);
+      } else {
+        setLocalUploadStatus(`${files.length} ${t('filesSelected')} — ${formatBytes(totalSize)} ${t('total')}`);
+      }
+    } else {
+      setLocalUploadFiles([]);
+      setLocalUploadStatus(t('noFilesSelected')); // NEW: i18n
+    }
+  };
+
+  const onLocalTranscribe = async () => {
+    if (!localUploadFiles || localUploadFiles.length === 0) return;
+    setLocalUploadLoading(true);
+    
+    const totalFiles = localUploadFiles.length;
+    let processedCount = 0;
+    let timelineId = null;
+    let allEvents = [];
+    const errors = [];
+
+    try {
+      for (let i = 0; i < localUploadFiles.length; i++) {
+        const file = localUploadFiles[i];
+        processedCount = i + 1;
+        
+        if (totalFiles > 1) {
+          setLocalUploadStatus(t('processingXofY', { current: processedCount, total: totalFiles, name: file.name }));
+        } else {
+          setLocalUploadStatus(t('processingFile', { name: file.name }));
+        }
+
+        try {
+          let result;
+          const shouldCreateNewTimeline = (i === 0) || !timelineId;
+          
+          if (shouldCreateNewTimeline) {
+            result = await transcribeAudioQueued(file, file.name, undefined);
+            timelineId = result.timelineId || 1;
+            allEvents = result.events || [];
+            
+            if (i > 0) {
+              console.log(`[Frontend] First file failed, created new timeline ${timelineId} for file ${i + 1}`);
+            }
+          } else {
+            result = await appendAudioQueued(timelineId, file, file.name, undefined);
+            allEvents = result.events || allEvents;
+          }
+          
+          if (timelineId && result) {
+            const timeline = {
+              id: timelineId,
+              device_id: null,
+              date_generated: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              recording_start_time: result.recording_start_time || null
+            };
+            
+            try {
+              localStorage.setItem(
+                `echolog_timeline_${timelineId}`,
+                JSON.stringify({ timeline, events: allEvents })
+              );
+            } catch (e) {
+              console.warn('Cache write failed:', e);
+            }
+          }
+        } catch (error) {
+          console.error(`Error transcribing ${file.name}:`, error);
+          const errorMessage = error.message || 'Unknown error';
+          errors.push({ file: file.name, error: errorMessage });
+          
+          if (i === 0) {
+            console.warn(`[Frontend] First file failed, will try to create timeline with next file`);
+          }
+        }
+      }
+
+      const successCount = totalFiles - errors.length;
+      
+      if (errors.length === 0) {
+        if (totalFiles > 1) {
+          setLocalUploadStatus(t('allFilesProcessed', { count: totalFiles }));
+        } else {
+          setLocalUploadStatus(t('doneOpeningTimeline'));
+        }
+        
+        if (timelineId) {
+          navigate(`/timeline/${timelineId}`);
+        } else {
+          setLocalUploadStatus(t('timelineNotCreated'));
+        }
+      } else if (successCount > 0 && timelineId) {
+        const errorSummary = errors.length === 1 
+          ? t('oneFileFailed', { file: errors[0].file })
+          : t('multipleFilesFailed', { count: errors.length });
+        setLocalUploadStatus(t('partialSuccess', { success: successCount, total: totalFiles, error: errorSummary }));
+        navigate(`/timeline/${timelineId}`);
+      } else {
+        if (errors.length === totalFiles) {
+          const errorMsg = errors.map(e => `${e.file}: ${e.error}`).join('; ');
+          setLocalUploadStatus(t('allFilesFailed', { count: totalFiles, error: errorMsg }));
+        } else {
+          setLocalUploadStatus(t('failedToCreateTimeline', { errors: errors.map(e => `${e.file}: ${e.error}`).join('; ') }));
+        }
+      }
+    } catch (error) {
+      console.error('Local transcribe error:', error);
+      setLocalUploadStatus(t('errorPrefix') + ' ' + (error.message || t('unknownError')));
+    } finally {
+      setLocalUploadLoading(false);
+    }
+  };
+
   useEffect(() => {
+    // Web Bluetooth UUIDs
+    const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+    const CHAR_CMD_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+    const CHAR_DATA_UUID = '829a287c-03c4-4c22-9442-70b9687c703b';
+    const CHAR_UPLOAD_UUID = 'ce2e1b12-5883-4903-8120-001004b3410f';
+
+    let device, server, service, cmdChar, dataChar, uploadChar;
     let fileBuffer = [];
     let isDownloading = false;
     let startTime;
@@ -278,9 +401,6 @@ function Home() {
       !btnRefresh ||
       !btnDownload ||
       !btnDelete ||
-      !btnStartUpload ||
-      !btnStopUpload ||
-      !fileInput ||
       !btnTranscribe ||
       !dlRangeStart ||
       !dlRangeEnd ||
@@ -300,7 +420,7 @@ function Home() {
     }
 
     async function sendCommand(cmd) {
-      return ble.sendCommand(cmd);
+      return bleSendCommand(cmd);
     }
 
     function refreshFileList() {
@@ -401,14 +521,12 @@ function Home() {
       const blob = new Blob(fileBuffer, { type: 'application/octet-stream' });
       const filename = fileSelect.value || 'download.bin';
 
-      // Use recording time metadata parsed earlier from the device (time saved on recorder, not download time)
       let recordingStartTime = null;
       const selectedOpt = fileSelect.options[fileSelect.selectedIndex];
       if (selectedOpt && selectedOpt.dataset && selectedOpt.dataset.recordingTime) {
         recordingStartTime = selectedOpt.dataset.recordingTime;
       }
       
-      // Add to downloaded files array (using ref since we're inside useEffect)
       const entry = { 
         blob, 
         filename, 
@@ -417,12 +535,11 @@ function Home() {
       };
       downloadedFilesRef.current = [...downloadedFilesRef.current, entry];
 
-      // Log stored metadata so you can inspect it in browser dev tools
       try {
         console.log('[DOWNLOAD-DEBUG] Stored downloaded audio file:', entry);
         console.log('[DOWNLOAD-DEBUG] All downloaded audio files:', downloadedFilesRef.current);
       } catch {
-        // ignore logging errors
+        // ignore
       }
       
       // Keep for backward compatibility (single file mode)
@@ -432,30 +549,28 @@ function Home() {
       // Do NOT trigger a browser download; keep file only in web app memory
       isDownloading = false;
       
-      // Update status to show downloaded files count
       const audioFiles = downloadedFilesRef.current.filter(f => 
         f.filename.match(/\.(wav|mp3|ogg|m4a)$/i)
       );
       if (filename.match(/\.(wav|mp3|ogg|m4a)$/i)) {
         const statusText = audioFiles.length > 1 
-          ? `Download Complete! ${audioFiles.length} audio file(s) ready to transcribe.`
-          : 'Download Complete! Ready to transcribe.';
+          ? t('downloadCompleteMultiple', { count: audioFiles.length })
+          : t('downloadCompleteSingle');
         dlStatus.innerText = statusText;
         setDownloadStatus(statusText);
         btnTranscribe.style.display = 'inline-block';
         btnTranscribe.disabled = false;
         if (audioFiles.length > 1) {
-          btnTranscribe.innerText = `TRANSCRIBE ${audioFiles.length} FILES`;
+          btnTranscribe.innerText = t('transcribeFiles', { count: audioFiles.length });
         } else {
-          btnTranscribe.innerText = 'TRANSCRIBE';
+          btnTranscribe.innerText = t('transcribe');
         }
       } else {
-        dlStatus.innerText = 'Download Complete!';
-        setDownloadStatus('Download Complete!');
+        dlStatus.innerText = t('downloadComplete');
+        setDownloadStatus(t('downloadComplete'));
         btnTranscribe.style.display = 'none';
       }
 
-      // If we have a multi-file download queue, continue with the next file
       if (downloadQueue.length > 0 && currentDownloadIndex >= 0) {
         currentDownloadIndex += 1;
         if (currentDownloadIndex < downloadQueue.length) {
@@ -469,11 +584,10 @@ function Home() {
           startTime = Date.now();
           const remaining = downloadQueue.length - currentDownloadIndex;
           dlStatus.innerText = remaining > 1
-            ? `Requesting ${nextOpt.value} (${currentDownloadIndex + 1}/${downloadQueue.length})…`
-            : `Requesting ${nextOpt.value}…`;
+            ? t('requestingFileProgress', { filename: nextOpt.value, current: currentDownloadIndex + 1, total: downloadQueue.length })
+            : t('requestingFile', { filename: nextOpt.value });
           sendCommand(`get ${nextOpt.value}`);
         } else {
-          // Finished whole queue
           downloadQueue = [];
           currentDownloadIndex = -1;
         }
@@ -481,7 +595,7 @@ function Home() {
     }
 
     async function processUploadStream() {
-      uploadStatus.innerText = 'Starting Stream...';
+      uploadStatus.innerText = t('startingStream');
       const reader = new FileReader();
       reader.onload = async (e) => {
         const data = e.target.result;
@@ -493,12 +607,12 @@ function Home() {
 
         while (offset < total) {
           if (stopUploadFlag) {
-            uploadStatus.innerText = 'Upload Cancelled';
+            uploadStatus.innerText = t('uploadCancelled');
             return;
           }
           const end = Math.min(offset + CHUNK_SIZE, total);
           const chunk = bytes.slice(offset, end);
-          const uploadChar = ble.getUploadCharacteristic();
+          const uploadChar = getUploadCharacteristic();
           if (!uploadChar) {
             uploadStatus.innerText = 'Upload failed: Bluetooth not connected';
             return;
@@ -511,14 +625,12 @@ function Home() {
             const elapsed = (now - startTime) / 1000;
             const speed = offset / (elapsed || 1);
             const pct = ((offset / total) * 100).toFixed(0);
-            uploadStatus.innerHTML = `Uploading: ${pct}% (${formatBytes(offset)}/${formatBytes(
-              total
-            )})<br>Speed: ${formatBytes(speed)}/s`;
+            uploadStatus.innerHTML = t('uploadProgress', { percent: pct, transferred: formatBytes(offset), total: formatBytes(total), speed: formatBytes(speed) });
           }
         }
 
         await sendCommand('end_upload');
-        uploadStatus.innerText = 'Upload Complete!';
+        uploadStatus.innerText = t('uploadComplete');
         setTimeout(refreshFileList, 1000);
       };
       reader.readAsArrayBuffer(uploadFileObj);
@@ -539,7 +651,7 @@ function Home() {
           return;
         }
         if (str.includes('ERROR')) {
-          uploadStatus.innerText = 'Error: SD Error';
+          uploadStatus.innerText = t('sdError');
           return;
         }
       }
@@ -550,7 +662,6 @@ function Home() {
           const parts = str.split('|');
           const [name, sizeStr, recordedMeta] = parts;
 
-          // Attempt to interpret recording metadata (time saved on device) before any download
           let recordingTimeIso = null;
           if (recordedMeta) {
             const numeric = Number(recordedMeta);
@@ -568,7 +679,6 @@ function Home() {
             }
           }
 
-          // Log device metadata so you can confirm recording time (pre-download)
           try {
             console.log('[BLE-DEBUG] Device file metadata (pre-download):', {
               raw: str,
@@ -578,7 +688,7 @@ function Home() {
               recordingTimeIsoFromDevice: recordingTimeIso
             });
           } catch {
-            // ignore logging errors
+            // ignore
           }
 
           const exists = Array.from(fileSelect.options).some((opt) => opt.value === name);
@@ -588,7 +698,6 @@ function Home() {
             opt.text = `${name} (${formatBytes(parseInt(sizeStr, 10))})`;
             opt.dataset.size = sizeStr;
 
-            // Store both raw and parsed recording time metadata on the option
             if (recordedMeta) {
               opt.dataset.recordingTimeRaw = recordedMeta;
             }
@@ -614,7 +723,8 @@ function Home() {
       }
 
       if (isDownloading) {
-        const chunk = new Uint8Array(value.buffer);
+        // DataView may reference a sub-range of a reused ArrayBuffer; copy bytes so chunks stay valid.
+        const chunk = new Uint8Array(value.buffer, value.byteOffset, value.byteLength).slice();
         fileBuffer.push(chunk);
         downloadBytesReceived += chunk.length;
 
@@ -622,9 +732,7 @@ function Home() {
           const now = Date.now();
           const elapsed = (now - startTime) / 1000;
           const speed = downloadBytesReceived / (elapsed || 1);
-          dlStatus.innerHTML = `Downloaded: ${formatBytes(downloadBytesReceived)} / ${formatBytes(
-            downloadTotalSize
-          )}<br>Speed: ${formatBytes(speed)}/s`;
+          dlStatus.innerHTML = t('downloadProgress', { transferred: formatBytes(downloadBytesReceived), total: formatBytes(downloadTotalSize), speed: formatBytes(speed) });
         }
       }
     }
@@ -635,8 +743,8 @@ function Home() {
     const onDeleteClick = async () => {
       const selectedOptions = Array.from(fileSelect.options).filter((opt) => opt.selected && !opt.text.includes('Scanning') && !opt.text.includes('Disconnected'));
       if (selectedOptions.length === 0) {
-        dlStatus.innerText = 'Please select file(s) to delete';
-        setDownloadStatus('Please select file(s) to delete');
+        dlStatus.innerText = t('pleaseSelectFiles');
+        setDownloadStatus(t('pleaseSelectFiles'));
         return;
       }
 
@@ -652,8 +760,8 @@ function Home() {
         return;
       }
 
-      dlStatus.innerText = `Deleting ${selectedOptions.length} file(s)...`;
-      setDownloadStatus(`Deleting ${selectedOptions.length} file(s)...`);
+      dlStatus.innerText = t('deletingFiles', { count: selectedOptions.length });
+      setDownloadStatus(t('deletingFiles', { count: selectedOptions.length }));
       try {
         console.log('[BLE-DEBUG] Delete requested for files:', selectedOptions.map(o => o.value));
       } catch {
@@ -665,7 +773,7 @@ function Home() {
         try {
           console.log('[BLE-DEBUG] Sending delete command for:', filename);
           await sendCommand(`del ${filename}`);
-          await new Promise(resolve => setTimeout(resolve, 200)); // Small delay between deletions
+          await new Promise(resolve => setTimeout(resolve, 200));
         } catch (error) {
           console.error(`Error deleting ${filename}:`, error);
         }
@@ -673,8 +781,8 @@ function Home() {
 
       setTimeout(() => {
         refreshFileList();
-        dlStatus.innerText = `Deleted ${selectedOptions.length} file(s)`;
-        setDownloadStatus(`Deleted ${selectedOptions.length} file(s)`);
+        dlStatus.innerText = t('deletedFiles', { count: selectedOptions.length });
+        setDownloadStatus(t('deletedFiles', { count: selectedOptions.length }));
         try {
           console.log('[BLE-DEBUG] Delete completed for files:', selectedOptions.map(o => o.value));
         } catch {
@@ -701,7 +809,6 @@ function Home() {
         selectedOptions.push(fileSelect.options[fileSelect.selectedIndex]);
       }
 
-      // Initialize queue with selected options
       downloadQueue = selectedOptions;
       currentDownloadIndex = 0;
 
@@ -717,37 +824,35 @@ function Home() {
       isDownloading = true;
       startTime = Date.now();
       dlStatus.innerText = downloadQueue.length > 1
-        ? `Requesting ${filename} (1/${downloadQueue.length})…`
-        : 'Requesting...';
+        ? t('requestingFileProgress', { filename, current: 1, total: downloadQueue.length })
+        : t('requestingFile', { filename });
       sendCommand(`get ${filename}`);
     };
 
     const onFileChange = (e) => {
       if (e.target.files && e.target.files.length > 0) {
         uploadFileObj = e.target.files[0];
-        uploadStatus.innerText = `File: ${uploadFileObj.name}\nSize: ${formatBytes(uploadFileObj.size)}`;
+        uploadStatus.innerText = `${t('fileColon')} ${uploadFileObj.name}\n${t('sizeColon')} ${formatBytes(uploadFileObj.size)}`;
       }
     };
 
     const onStartUploadClick = () => {
       if (!uploadFileObj) return;
       stopUploadFlag = false;
-      uploadStatus.innerText = 'Initializing...';
+      uploadStatus.innerText = t('initializing');
       sendCommand(`upload ${uploadFileObj.name}`);
     };
 
     const onStopUploadClick = () => {
       stopUploadFlag = true;
-      uploadStatus.innerText = 'Stopping...';
+      uploadStatus.innerText = t('stopping');
     };
 
     const onTranscribeClick = async () => {
-      // Get all downloaded audio files from ref
       const audioFiles = downloadedFilesRef.current.filter(f => 
         f.filename.match(/\.(wav|mp3|ogg|m4a)$/i)
       );
       
-      // Fallback to single file mode if array is empty
       if (audioFiles.length === 0) {
         if (!lastDownloadedBlobRef.current || !lastDownloadedFilenameRef.current) return;
         audioFiles.push({
@@ -760,7 +865,7 @@ function Home() {
       
       setDownloadTranscribeLoading(true);
       btnTranscribe.disabled = true;
-      btnTranscribe.innerText = audioFiles.length > 1 ? `Processing ${audioFiles.length} files…` : 'Processing...';
+      btnTranscribe.innerText = audioFiles.length > 1 ? t('processingXFiles', { count: audioFiles.length }) : t('processing');
       
       const totalFiles = audioFiles.length;
       let processedCount = 0;
@@ -769,33 +874,27 @@ function Home() {
       const errors = [];
 
       try {
-        // Process all files sequentially using the queue
         for (let i = 0; i < audioFiles.length; i++) {
           const file = audioFiles[i];
           processedCount = i + 1;
           
-          // Update status to show progress
           if (totalFiles > 1) {
-            const statusText = `Processing ${processedCount}/${totalFiles}: ${file.filename}…`;
+            const statusText = t('processingXofY', { current: processedCount, total: totalFiles, name: file.filename });
             dlStatus.innerText = statusText;
             setDownloadStatus(statusText);
-            btnTranscribe.innerText = `Processing ${processedCount}/${totalFiles}…`;
+            btnTranscribe.innerText = t('processingCount', { current: processedCount, total: totalFiles });
           } else {
-            const statusText = `Processing: ${file.filename}…`;
+            const statusText = t('processingFile', { name: file.filename });
             dlStatus.innerText = statusText;
             setDownloadStatus(statusText);
-            btnTranscribe.innerText = 'Processing...';
+            btnTranscribe.innerText = t('processing');
           }
 
           try {
             let result;
-            
-            // Determine if we need to create a new timeline or append
             const shouldCreateNewTimeline = (i === 0) || !timelineId;
             
             if (shouldCreateNewTimeline) {
-              // Create new timeline (first file or fallback after failure)
-              // Use device-provided recording time when available so timeline shows actual recording time
               const recordingTimeISO = file.recordingStartTime || undefined;
               result = await transcribeAudioQueued(file.blob, file.filename, recordingTimeISO);
               timelineId = result.timelineId || 1;
@@ -805,7 +904,6 @@ function Home() {
                 console.log(`[Frontend] First file failed, created new timeline ${timelineId} for file ${i + 1}`);
               }
             } else {
-              // Append to existing timeline (preserve per-file recording time when available)
               const recordingTimeISO = file.recordingStartTime || undefined;
               result = await appendAudioQueued(timelineId, file.blob, file.filename, recordingTimeISO);
               // In mockData fallback mode the backend may create a new timelineId;
@@ -817,7 +915,6 @@ function Home() {
               allEvents = result.events || allEvents;
             }
             
-            // Update timeline cache after each successful transcription
             if (timelineId && result) {
               const timeline = {
                 id: timelineId,
@@ -842,61 +939,53 @@ function Home() {
             const errorMessage = error.message || 'Unknown error';
             errors.push({ file: file.filename, error: errorMessage });
             
-            // If this was supposed to be the first file and it failed, log it
             if (i === 0) {
               console.warn(`[Frontend] First file failed, will try to create timeline with next file`);
             }
           }
         }
 
-        // Final status and navigation - wait until ALL files are processed
         const successCount = totalFiles - errors.length;
         
         if (errors.length === 0) {
-          // All succeeded
           if (totalFiles > 1) {
-            const statusText = `Done — ${totalFiles} files transcribed and queued. Opening timeline…`;
+            const statusText = t('allFilesProcessed', { count: totalFiles });
             dlStatus.innerText = statusText;
             setDownloadStatus(statusText);
           } else {
-            const statusText = 'Done — opening timeline';
+            const statusText = t('doneOpeningTimeline');
             dlStatus.innerText = statusText;
             setDownloadStatus(statusText);
           }
           
-          // Navigate to the timeline with all events
           if (timelineId) {
-            // Clear downloaded files after successful transcription
             downloadedFilesRef.current = [];
             navigate(`/timeline/${timelineId}`);
           } else {
-            dlStatus.innerText = 'Error: Timeline was not created';
-            setDownloadStatus('Error: Timeline was not created');
+            dlStatus.innerText = t('timelineNotCreated');
+            setDownloadStatus(t('timelineNotCreated'));
           }
         } else if (successCount > 0 && timelineId) {
-          // Some succeeded, some failed - but we have a timeline
           const errorSummary = errors.length === 1 
-            ? `1 file failed (${errors[0].file})`
-            : `${errors.length} files failed`;
-          const statusText = `Partial success: ${successCount}/${totalFiles} processed. ${errorSummary}. Opening timeline…`;
+            ? t('oneFileFailed', { file: errors[0].file })
+            : t('multipleFilesFailed', { count: errors.length });
+          const statusText = t('partialSuccess', { success: successCount, total: totalFiles, error: errorSummary });
           dlStatus.innerText = statusText;
           setDownloadStatus(statusText);
-          // Clear successfully processed files (keep failed ones for retry if needed)
           downloadedFilesRef.current = downloadedFilesRef.current.filter(f => 
             errors.some(e => e.file === f.filename)
           );
           navigate(`/timeline/${timelineId}`);
         } else {
-          // All failed or no timeline created
           if (errors.length === totalFiles) {
             const errorMsg = errors.map(e => `${e.file}: ${e.error}`).join('; ');
-            const statusText = `Error: All ${totalFiles} files failed. ${errorMsg}`;
+            const statusText = t('allFilesFailed', { count: totalFiles, error: errorMsg });
             dlStatus.innerText = statusText;
             setDownloadStatus(statusText);
             await showAlert(`Error: All files failed. ${errorMsg}`, 'Transcription failed');
           } else {
             const errorMsg = errors.map(e => `${e.file}: ${e.error}`).join('; ');
-            const statusText = `Error: Failed to create timeline. ${errorMsg}`;
+            const statusText = t('failedToCreateTimeline', { errors: errorMsg });
             dlStatus.innerText = statusText;
             setDownloadStatus(statusText);
             await showAlert(`Error: Failed to create timeline. ${errorMsg}`, 'Transcription failed');
@@ -904,7 +993,7 @@ function Home() {
         }
       } catch (error) {
         console.error('Download transcribe error:', error);
-        const errorText = 'Error: ' + (error.message || 'Unknown error');
+        const errorText = t('errorPrefix') + ' ' + (error.message || t('unknownError'));
         dlStatus.innerText = errorText;
         setDownloadStatus(errorText);
         await showAlert('Error transcribing audio: ' + (error.message || 'Unknown error'), 'Transcription error');
@@ -912,51 +1001,50 @@ function Home() {
         setDownloadTranscribeLoading(false);
         btnTranscribe.disabled = false;
         
-        // Update button text based on remaining files
         const remainingAudioFiles = downloadedFilesRef.current.filter(f => 
           f.filename.match(/\.(wav|mp3|ogg|m4a)$/i)
         );
         if (remainingAudioFiles.length > 1) {
-          btnTranscribe.innerText = `TRANSCRIBE ${remainingAudioFiles.length} FILES`;
+          btnTranscribe.innerText = t('transcribeFiles', { count: remainingAudioFiles.length });
         } else if (remainingAudioFiles.length === 1) {
-          btnTranscribe.innerText = 'TRANSCRIBE';
+          btnTranscribe.innerText = t('transcribe');
         } else {
-          btnTranscribe.innerText = 'TRANSCRIBE';
+          btnTranscribe.innerText = t('transcribe');
           btnTranscribe.style.display = 'none';
         }
       }
     };
 
-    ble.setDataHandler(handleIncomingData);
+    setDataHandler(handleIncomingData);
 
     btnRefresh.addEventListener('click', onRefreshClick);
     btnApplyRange.addEventListener('click', onApplyRangeClick);
     btnDownload.addEventListener('click', onDownloadClick);
     btnDelete.addEventListener('click', onDeleteClick);
-    fileInput.addEventListener('change', onFileChange);
-    btnStartUpload.addEventListener('click', onStartUploadClick);
-    btnStopUpload.addEventListener('click', onStopUploadClick);
+    if (fileInput) fileInput.addEventListener('change', onFileChange);
+    if (btnStartUpload) btnStartUpload.addEventListener('click', onStartUploadClick);
+    if (btnStopUpload) btnStopUpload.addEventListener('click', onStopUploadClick);
     btnTranscribe.addEventListener('click', onTranscribeClick);
 
     btnTranscribe.style.display = 'none';
     renderFileChecklist();
 
     return () => {
-      ble.setDataHandler(null);
+      setDataHandler(null);
       try {
         btnRefresh.removeEventListener('click', onRefreshClick);
         btnApplyRange.removeEventListener('click', onApplyRangeClick);
         btnDownload.removeEventListener('click', onDownloadClick);
         btnDelete.removeEventListener('click', onDeleteClick);
-        fileInput.removeEventListener('change', onFileChange);
-        btnStartUpload.removeEventListener('click', onStartUploadClick);
-        btnStopUpload.removeEventListener('click', onStopUploadClick);
+        if (fileInput) fileInput.removeEventListener('change', onFileChange);
+        if (btnStartUpload) btnStartUpload.removeEventListener('click', onStartUploadClick);
+        if (btnStopUpload) btnStopUpload.removeEventListener('click', onStopUploadClick);
         btnTranscribe.removeEventListener('click', onTranscribeClick);
       } catch {
         // ignore
       }
     };
-  }, [ble, navigate, showAlert, showConfirm]);
+  }, [setDataHandler, bleSendCommand, getUploadCharacteristic, navigate, showAlert, showConfirm]);
 
   return (
     <div className="home-shell">
@@ -970,24 +1058,27 @@ function Home() {
         <div className="square"></div>
       </div>
       <div className="sidebar">
-        <div className="logo">EchoLog</div>
+        <div className="logo">{t('appName')}</div> {/* NEW: i18n */}
         <div className="status-panel">
           Device: <span>{ble.connectionStatus}</span>
           <br />
           Bluetooth: <span>{ble.deviceName}</span>
         </div>
-        <div className="menu-item active">Home</div>
+        <div className="menu-item active">{t('home')}</div> {/* NEW: i18n */}
         <div className="menu-item" onClick={() => navigate('/menu')}>
-          Main Menu →
+          Timelines
+        </div>
+        <div className="menu-item" onClick={() => navigate('/settings')}>
+          {t('settings')}
         </div>
         <div className="menu-item" onClick={() => navigate(user ? '/account' : '/login')}>
-          {user ? 'Account →' : 'Login / Register →'}
+          {user ? t('account') : t('loginRegister')}
         </div>
         <div className="user-panel">
           <div className="avatar-circle">
             {user?.username ? user.username.charAt(0).toUpperCase() : '👤'}
           </div>
-          <div className="username">{user?.username || 'guest'}</div>
+          <div className="username">{user?.username || t('guest')}</div> {/* NEW: i18n */}
           {user && (
             <div
               className="logout-link"
@@ -996,7 +1087,7 @@ function Home() {
                 navigate('/login');
               }}
             >
-              Logout
+              {t('logout')} {/* NEW: i18n */}
             </div>
           )}
         </div>
@@ -1004,38 +1095,38 @@ function Home() {
 
       <div className="main-content">
         <div className="welcome-hero">
-          <h1>Welcome</h1>
-          <p>Upload, download, and connect to your EchoLog device.</p>
+          <h1>{t('welcome')}</h1> {/* NEW: i18n */}
+          <p>{t('homeDescription')}</p> {/* NEW: i18n */}
         </div>
 
         <div className="top-row">
-          <div className="card">
+          {isAdmin && <div className="card">
             <div className="card-header">
               <div className="icon-box orange-icon">⬆</div>
               <div>
-                <h3>Upload Files</h3>
-                <p className="subtext">Upload files to onboard storage</p>
+                <h3>{t('uploadFiles')}</h3> {/* NEW: i18n */}
+                <p className="subtext">{t('uploadDescription')}</p> {/* NEW: i18n */}
               </div>
             </div>
             <div className="info-line" id="uploadStatus">
-              File: -{'\n'}Size: 0Kb
+              {t('fileColon')} -{'\n'}{t('sizeColon')} 0Kb {/* NEW: i18n */}
             </div>
             <div className="control-group">
               <input type="file" id="fileInput" style={{ display: 'none' }} />
               <button className="btn btn-green" id="btnStartUpload" disabled>
-                START ▶
+                {t('start')} ▶ {/* NEW: i18n */}
               </button>
               <button
                 className="btn btn-orange"
                 onClick={() => document.getElementById('fileInput')?.click()}
               >
-                SELECT FILES
+                {t('selectFiles')} {/* NEW: i18n */}
               </button>
               <button className="btn btn-red" id="btnStopUpload">
-                STOP
+                {t('stop')} {/* NEW: i18n */}
               </button>
             </div>
-          </div>
+          </div>}
 
           <div className="card connect-card">
             <div className="card-header">
@@ -1130,35 +1221,6 @@ function Home() {
           </div>
         </div>
 
-        <div className="card bottom-row">
-          <div className="card-header">
-            <div className="icon-box teal-icon">🔗</div>
-            <div>
-              <h3>Connect Device</h3>
-              <p className="subtext">Connect via Bluetooth Low Energy (BLE)</p>
-            </div>
-          </div>
-          <div className="connection-single">
-            <div className="conn-box">
-              <div className="conn-title">Bluetooth Connection:</div>
-              <div className="device-list" id="bleList">
-                Status: Not Connected
-              </div>
-              <div>
-                <button className="btn btn-orange" id="btnScan">
-                  SCAN &amp; CONNECT
-                </button>
-                <button className="btn btn-red" id="btnDisconnect" style={{ display: 'none' }}>
-                  DISCONNECT
-                </button>
-              </div>
-              <div className="hint">
-                Note: Web Bluetooth requires Chrome/Edge and usually `https://` or `localhost`.
-                <InteractiveMap longitude = {-75.6876174} latitude = {45.4189231} ></InteractiveMap>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

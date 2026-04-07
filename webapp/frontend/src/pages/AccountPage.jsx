@@ -1,14 +1,39 @@
+// CEG491X-Capstone/webapp/Frontend/src/pages/AccountPage.jsx
+
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next'; // NEW: i18n
+import { FaEye, FaEyeSlash } from 'react-icons/fa';
 import './AccountPage.css';
+import './Home.css';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
-import { useDialog } from '../contexts/DialogContext';
+import { useBle } from '../contexts/BleConnectionContext';
 
 const API_URL = '/api';
 
-const AccountPage = ({ onBack }) => {
+function getPasswordStrength(password) {
+  if (!password) {
+    return { score: 0, label: 'None', className: 'none', width: 0 };
+  }
+
+  let score = 0;
+  if (password.length >= 8) score += 1;
+  if (password.length >= 12) score += 1;
+  if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score += 1;
+  if (/\d/.test(password)) score += 1;
+  if (/[^A-Za-z0-9]/.test(password)) score += 1;
+
+  if (score <= 2) return { score, label: 'Weak', className: 'weak', width: 35 };
+  if (score <= 4) return { score, label: 'Medium', className: 'medium', width: 70 };
+  return { score, label: 'Strong', className: 'strong', width: 100 };
+}
+
+const AccountPage = () => {
   const { user, logout } = useAuth();
-  const { showAlert } = useDialog();
+  const ble = useBle();
+  const navigate = useNavigate();
+  const { t } = useTranslation(); // NEW: i18n
   const [formData, setFormData] = useState({
     username: user?.username || '',
     email: user?.email || '',
@@ -17,6 +42,10 @@ const AccountPage = ({ onBack }) => {
     confirmPassword: ''
   });
   const [saving, setSaving] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const passwordStrength = getPasswordStrength(formData.newPassword);
 
   useEffect(() => {
     (async () => {
@@ -37,7 +66,7 @@ const AccountPage = ({ onBack }) => {
 
   const handleSave = async () => {
     if (formData.newPassword && formData.newPassword !== formData.confirmPassword) {
-      await showAlert('New passwords do not match!', 'Account');
+      alert(t('passwordsDoNotMatch'));
       return;
     }
     setSaving(true);
@@ -48,7 +77,7 @@ const AccountPage = ({ onBack }) => {
         currentPassword: formData.currentPassword || undefined,
         newPassword: formData.newPassword || undefined
       });
-      await showAlert('Account updated successfully!', 'Account');
+      alert(t('accountUpdated'));
       setFormData(prev => ({
         ...prev,
         currentPassword: '',
@@ -57,52 +86,68 @@ const AccountPage = ({ onBack }) => {
       }));
     } catch (err) {
       console.error('Error updating account:', err);
-      await showAlert(
-        'Failed to update account: ' + (err.response?.data?.error || err.message),
-        'Account'
-      );
+      alert(t('updateFailed') + ': ' + (err.response?.data?.error || err.message));
     } finally {
       setSaving(false);
     }
   };
 
-  const handleLogoutAll = async () => {
+  const handleLogout = async () => {
     await logout();
+    navigate('/login');
   };
 
   return (
-    <div className="account-container">
+    <div className="home-shell">
+      <div className="floating-bg">
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+      </div>
+      <div className="sidebar">
+        <div className="logo">{t('appName')}</div>
+        <div className="status-panel">
+          Device: <span>{ble.connectionStatus}</span>
+          <br />
+          Bluetooth: <span>{ble.deviceName}</span>
+        </div>
+        <div className="menu-item" onClick={() => navigate('/home')}>{t('home')}</div>
+        <div className="menu-item" onClick={() => navigate('/menu')}>Timelines</div>
+        <div className="menu-item" onClick={() => navigate('/settings')}>{t('settings')}</div>
+        <div className="menu-item active" onClick={() => navigate('/account')}>{t('account')}</div>
+        <div className="user-panel">
+          <div className="avatar-circle">{user?.username?.charAt(0).toUpperCase() || 'U'}</div>
+          <div className="username">{user?.username || t('user')}</div>
+          <div className="logout-link" onClick={handleLogout}>{t('logout')}</div>
+        </div>
+      </div>
+
+      <div className="main-content account-container">
       <div className="account-header">
-        <button className="back-btn" onClick={onBack}>
-          ← Back
-        </button>
-        <h1>Account Management</h1>
-        <p className="subtitle">Manage your profile and security settings</p>
+        <h1>{t('accountManagement')}</h1>
+        <p className="subtitle">{t('manageProfile')}</p>
       </div>
 
       <div className="account-grid">
         <div className="account-card">
-          <h3>Profile Information</h3>
+          <h3>{t('profileInfo')}</h3>
 
           <div className="profile-header">
             <div className="avatar-large">
               {user?.username?.charAt(0).toUpperCase() || 'U'}
             </div>
             <div className="profile-info">
-              <h4>{user?.name || user?.username || 'User'}</h4>
-              <p>{user?.role || 'User'}</p>
-              <button
-                className="btn-text"
-                type="button"
-                onClick={() => showAlert('Avatar change not implemented yet.', 'Account')}
-              >
-                Change Avatar
-              </button>
+              <h4>{user?.name || user?.username || t('user')}</h4>
+              <p>{user?.role || t('user')}</p>
             </div>
           </div>
 
           <div className="form-group">
-            <label>Username</label>
+            <label>{t('username')}</label>
             <input
               type="text"
               value={formData.username}
@@ -111,7 +156,7 @@ const AccountPage = ({ onBack }) => {
           </div>
 
           <div className="form-group">
-            <label>Email Address</label>
+            <label>{t('email')}</label>
             <input
               type="email"
               value={formData.email}
@@ -121,117 +166,107 @@ const AccountPage = ({ onBack }) => {
         </div>
 
         <div className="account-card">
-          <h3>Security</h3>
+          <h3>{t('security')}</h3>
 
           <div className="form-group">
-            <label>Current Password</label>
-            <input
-              type="password"
-              value={formData.currentPassword}
-              onChange={(e) =>
-                setFormData({ ...formData, currentPassword: e.target.value })
-              }
-              placeholder="Enter current password"
-            />
-          </div>
-
-          <div className="form-group">
-            <label>New Password</label>
-            <input
-              type="password"
-              value={formData.newPassword}
-              onChange={(e) =>
-                setFormData({ ...formData, newPassword: e.target.value })
-              }
-              placeholder="Enter new password"
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Confirm New Password</label>
-            <input
-              type="password"
-              value={formData.confirmPassword}
-              onChange={(e) =>
-                setFormData({ ...formData, confirmPassword: e.target.value })
-              }
-              placeholder="Confirm new password"
-            />
-          </div>
-
-          <div className="password-strength">
-            <div className="strength-label">Password Strength:</div>
-            <div className="strength-bar">
-              <div className="strength-fill weak"></div>
-            </div>
-            <div className="strength-text">Weak</div>
-          </div>
-        </div>
-
-        <div className="account-card">
-          <h3>Account Actions</h3>
-
-          <div className="account-actions">
-            <button
-              className="btn btn-secondary"
-              type="button"
-              onClick={() => showAlert('Export data not implemented yet.', 'Account')}
-            >
-              Export My Data
-            </button>
-
-            <button
-              className="btn btn-secondary"
-              type="button"
-              onClick={() => showAlert('Usage report not implemented yet.', 'Account')}
-            >
-              Download Usage Report
-            </button>
-
-            <button
-              className="btn btn-warning"
-              type="button"
-              onClick={() => showAlert('Clear cache not implemented yet.', 'Account')}
-            >
-              Clear App Cache
-            </button>
-
-            <button
-              className="btn btn-danger"
-              type="button"
-              onClick={handleLogoutAll}
-            >
-              Logout from All Devices
-            </button>
-
-            <div className="danger-zone">
-              <h4>Danger Zone</h4>
-              <p className="danger-text">
-                Deleting your account will remove all your data and cannot be undone.
-              </p>
+            <label>{t('currentPassword')}</label>
+            <div className="password-input-wrapper">
+              <input
+                type={showCurrentPassword ? 'text' : 'password'}
+                value={formData.currentPassword}
+                onChange={(e) =>
+                  setFormData({ ...formData, currentPassword: e.target.value })
+                }
+                placeholder={t('enterCurrentPassword')}
+              />
               <button
-                className="btn btn-danger-outline"
                 type="button"
-                onClick={() => showAlert('Delete account not implemented yet.', 'Account')}
+                className="password-toggle"
+                onClick={() => setShowCurrentPassword((v) => !v)}
+                aria-label={showCurrentPassword ? t('hidePassword') : t('showPassword')}
               >
-                Delete My Account
+                {showCurrentPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
               </button>
             </div>
           </div>
+
+          <div className="form-group">
+            <label>{t('newPassword')}</label>
+            <div className="password-input-wrapper">
+              <input
+                type={showNewPassword ? 'text' : 'password'}
+                value={formData.newPassword}
+                onChange={(e) =>
+                  setFormData({ ...formData, newPassword: e.target.value })
+                }
+                placeholder={t('enterNewPassword')}
+              />
+              <button
+                type="button"
+                className="password-toggle"
+                onClick={() => setShowNewPassword((v) => !v)}
+                aria-label={showNewPassword ? t('hidePassword') : t('showPassword')}
+              >
+                {showNewPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
+              </button>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>{t('confirmNewPassword')}</label>
+            <div className="password-input-wrapper">
+              <input
+                type={showConfirmPassword ? 'text' : 'password'}
+                value={formData.confirmPassword}
+                onChange={(e) =>
+                  setFormData({ ...formData, confirmPassword: e.target.value })
+                }
+                placeholder={t('confirmNewPassword')}
+              />
+              <button
+                type="button"
+                className="password-toggle"
+                onClick={() => setShowConfirmPassword((v) => !v)}
+                aria-label={showConfirmPassword ? t('hidePassword') : t('showPassword')}
+              >
+                {showConfirmPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
+              </button>
+            </div>
+          </div>
+
+          <div className="password-strength">
+            <div className="strength-label">{t('passwordStrength')}:</div>
+            <div className="strength-bar">
+              <div
+                className={`strength-fill ${passwordStrength.className}`}
+                style={{ width: `${passwordStrength.width}%` }}
+              ></div>
+            </div>
+            <div className={`strength-text ${passwordStrength.className}`}>
+              {passwordStrength.className === 'none'
+                ? ' '
+                : passwordStrength.className === 'weak'
+                  ? t('weak')
+                  : passwordStrength.className === 'medium'
+                    ? 'Medium'
+                    : 'Strong'}
+            </div>
+          </div>
         </div>
+
       </div>
 
       <div className="account-actions-footer">
-        <button className="btn btn-secondary" onClick={onBack}>
-          Cancel
+        <button className="btn btn-secondary" onClick={() => navigate('/home')}>
+          {t('cancel')}
         </button>
         <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-          {saving ? 'Saving…' : 'Save Changes'}
+          {saving ? t('saving') : t('saveChanges')}
         </button>
+      </div>
       </div>
     </div>
   );
 };
 
 export default AccountPage;
-

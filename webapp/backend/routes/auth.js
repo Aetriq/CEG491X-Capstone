@@ -1,3 +1,5 @@
+// CEG491X-Capstone/webapp/Backend/routes/auth.js
+
 const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
@@ -36,7 +38,13 @@ router.post('/register',
 
       res.status(201).json({
         message: 'Account created successfully',
-        user: { id: user.id, username: user.username, email: user.email },
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          is_admin: user.is_admin ?? 0,
+          role: user.is_admin ? 'admin' : 'user'
+        },
         token
       });
     } catch (error) {
@@ -82,7 +90,13 @@ router.post('/login',
 
       res.json({
         message: 'Sign in successful',
-        user: { id: user.id, username: user.username, email: user.email },
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          is_admin: user.is_admin ?? 0,
+          role: user.is_admin ? 'admin' : 'user'
+        },
         token
       });
     } catch (error) {
