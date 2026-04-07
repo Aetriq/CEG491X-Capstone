@@ -1,4 +1,4 @@
-﻿// CEG491X-Capstone/webapp/Frontend/src/pages/Login.jsx
+// CEG491X-Capstone/webapp/Frontend/src/pages/Login.jsx
 
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -94,7 +94,6 @@ function Login() {
                 </div>
               </div>
               <div className="login-links">
-                <a href="#">{t('forgotPassword')}</a>
                 <Link to="/register">{t('signUpHere')}</Link>
               </div>
               {error && <div className="error-msg">{error}</div>}

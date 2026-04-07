@@ -177,7 +177,14 @@ function Home() {
   const { user, logout } = useAuth();
   const { showAlert, showConfirm } = useDialog();
   const ble = useBle();
+  const { setDataHandler, sendCommand: bleSendCommand, getUploadCharacteristic } = ble;
   const { t } = useTranslation(); // NEW: i18n
+  const isAdmin = (
+    user?.is_admin === true ||
+    user?.is_admin === 1 ||
+    user?.is_admin === '1' ||
+    String(user?.role || '').toLowerCase() === 'admin'
+  );
   const [bleConnectionStatus, setBleConnectionStatus] = useState('Disconnected (Bluetooth)');
   const [bleDeviceName, setBleDeviceName] = useState('Not Connected');
   const [localUploadFiles, setLocalUploadFiles] = useState([]);
@@ -199,19 +206,19 @@ function Home() {
     const btnDelete = document.getElementById('btnDelete');
     const btnStartUpload = document.getElementById('btnStartUpload');
     const btnTranscribe = document.getElementById('btnTranscribe');
-    if (!fileSelect || !fileChecklist || !dlStatus || !btnRefresh || !btnDownload || !btnDelete || !btnStartUpload || !btnTranscribe) {
+    if (!fileSelect || !fileChecklist || !dlStatus || !btnRefresh || !btnDownload || !btnDelete || !btnTranscribe) {
       return;
     }
     if (ble.isConnected) {
       btnRefresh.disabled = false;
       btnDownload.disabled = false;
       btnDelete.disabled = false;
-      btnStartUpload.disabled = false;
+      if (btnStartUpload) btnStartUpload.disabled = false;
     } else {
       btnRefresh.disabled = true;
       btnDownload.disabled = true;
       btnDelete.disabled = true;
-      btnStartUpload.disabled = true;
+      if (btnStartUpload) btnStartUpload.disabled = true;
       fileSelect.innerHTML = '<option>Disconnected</option>';
       fileChecklist.innerHTML = '<div class="file-checklist-empty">Disconnected</div>';
       downloadedFilesRef.current = [];
@@ -394,9 +401,6 @@ function Home() {
       !btnRefresh ||
       !btnDownload ||
       !btnDelete ||
-      !btnStartUpload ||
-      !btnStopUpload ||
-      !fileInput ||
       !btnTranscribe ||
       !dlRangeStart ||
       !dlRangeEnd ||
@@ -416,7 +420,7 @@ function Home() {
     }
 
     async function sendCommand(cmd) {
-      return ble.sendCommand(cmd);
+      return bleSendCommand(cmd);
     }
 
     function refreshFileList() {
@@ -608,7 +612,7 @@ function Home() {
           }
           const end = Math.min(offset + CHUNK_SIZE, total);
           const chunk = bytes.slice(offset, end);
-          const uploadChar = ble.getUploadCharacteristic();
+          const uploadChar = getUploadCharacteristic();
           if (!uploadChar) {
             uploadStatus.innerText = 'Upload failed: Bluetooth not connected';
             return;
@@ -719,7 +723,8 @@ function Home() {
       }
 
       if (isDownloading) {
-        const chunk = new Uint8Array(value.buffer);
+        // DataView may reference a sub-range of a reused ArrayBuffer; copy bytes so chunks stay valid.
+        const chunk = new Uint8Array(value.buffer, value.byteOffset, value.byteLength).slice();
         fileBuffer.push(chunk);
         downloadBytesReceived += chunk.length;
 
@@ -1010,36 +1015,36 @@ function Home() {
       }
     };
 
-    ble.setDataHandler(handleIncomingData);
+    setDataHandler(handleIncomingData);
 
     btnRefresh.addEventListener('click', onRefreshClick);
     btnApplyRange.addEventListener('click', onApplyRangeClick);
     btnDownload.addEventListener('click', onDownloadClick);
     btnDelete.addEventListener('click', onDeleteClick);
-    fileInput.addEventListener('change', onFileChange);
-    btnStartUpload.addEventListener('click', onStartUploadClick);
-    btnStopUpload.addEventListener('click', onStopUploadClick);
+    if (fileInput) fileInput.addEventListener('change', onFileChange);
+    if (btnStartUpload) btnStartUpload.addEventListener('click', onStartUploadClick);
+    if (btnStopUpload) btnStopUpload.addEventListener('click', onStopUploadClick);
     btnTranscribe.addEventListener('click', onTranscribeClick);
 
     btnTranscribe.style.display = 'none';
     renderFileChecklist();
 
     return () => {
-      ble.setDataHandler(null);
+      setDataHandler(null);
       try {
         btnRefresh.removeEventListener('click', onRefreshClick);
         btnApplyRange.removeEventListener('click', onApplyRangeClick);
         btnDownload.removeEventListener('click', onDownloadClick);
         btnDelete.removeEventListener('click', onDeleteClick);
-        fileInput.removeEventListener('change', onFileChange);
-        btnStartUpload.removeEventListener('click', onStartUploadClick);
-        btnStopUpload.removeEventListener('click', onStopUploadClick);
+        if (fileInput) fileInput.removeEventListener('change', onFileChange);
+        if (btnStartUpload) btnStartUpload.removeEventListener('click', onStartUploadClick);
+        if (btnStopUpload) btnStopUpload.removeEventListener('click', onStopUploadClick);
         btnTranscribe.removeEventListener('click', onTranscribeClick);
       } catch {
         // ignore
       }
     };
-  }, [ble, navigate, showAlert, showConfirm]);
+  }, [setDataHandler, bleSendCommand, getUploadCharacteristic, navigate, showAlert, showConfirm]);
 
   return (
     <div className="home-shell">
@@ -1061,10 +1066,13 @@ function Home() {
         </div>
         <div className="menu-item active">{t('home')}</div> {/* NEW: i18n */}
         <div className="menu-item" onClick={() => navigate('/menu')}>
-          {t('mainMenu')} → {/* NEW: i18n */}
+          Timelines
+        </div>
+        <div className="menu-item" onClick={() => navigate('/settings')}>
+          {t('settings')}
         </div>
         <div className="menu-item" onClick={() => navigate(user ? '/account' : '/login')}>
-          {user ? t('account') + ' →' : t('loginRegister') + ' →'} {/* NEW: i18n */}
+          {user ? t('account') : t('loginRegister')}
         </div>
         <div className="user-panel">
           <div className="avatar-circle">
@@ -1092,7 +1100,7 @@ function Home() {
         </div>
 
         <div className="top-row">
-          <div className="card">
+          {isAdmin && <div className="card">
             <div className="card-header">
               <div className="icon-box orange-icon">⬆</div>
               <div>
@@ -1118,7 +1126,7 @@ function Home() {
                 {t('stop')} {/* NEW: i18n */}
               </button>
             </div>
-          </div>
+          </div>}
 
           <div className="card connect-card">
             <div className="card-header">

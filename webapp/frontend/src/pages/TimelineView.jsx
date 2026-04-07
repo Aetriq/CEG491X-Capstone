@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
 import { useDialog } from '../contexts/DialogContext';
 import { useBle } from '../contexts/BleConnectionContext';
 import { useTranslation } from 'react-i18next'; // NEW: i18n
@@ -54,7 +53,6 @@ function formatDayMonth(isoString) {
 function TimelineView() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
   const { showAlert } = useDialog();
   const ble = useBle();
   const { t, i18n } = useTranslation(); // NEW: i18n
@@ -208,17 +206,33 @@ function TimelineView() {
   };
 
   const handleMainMenu = () => {
-    if (user) {
-      navigate('/home');
-    } else {
-      navigate('/menu');
-    }
+    navigate('/menu');
   };
 
   const handleSaveEdit = async (eventId) => {
     try {
-      await axios.put(`${API_URL}/timelines/${id}/events/${eventId}`, editForm);
-      await loadTimeline();
+      const response = await axios.put(`${API_URL}/timelines/${id}/events/${eventId}`, editForm);
+      const updatedEvent = response?.data?.event;
+      if (updatedEvent) {
+        setEvents((prev) =>
+          prev.map((ev) => (ev.id === eventId ? { ...ev, ...updatedEvent } : ev))
+        );
+      } else {
+        await loadTimeline();
+      }
+      try {
+        const cacheKey = `${CACHE_KEY_PREFIX}${id}`;
+        const cachedRaw = localStorage.getItem(cacheKey);
+        if (cachedRaw) {
+          const parsed = JSON.parse(cachedRaw);
+          const nextEvents = (parsed.events || []).map((ev) =>
+            ev.id === eventId ? { ...ev, transcript: editForm.transcript } : ev
+          );
+          localStorage.setItem(cacheKey, JSON.stringify({ ...parsed, events: nextEvents }));
+        }
+      } catch {
+        // ignore cache update failures
+      }
       setEditingEvent(null);
       setEditForm({});
     } catch (error) {
@@ -366,12 +380,21 @@ function TimelineView() {
 
   return (
     <div className="timeline-view-container">
+      <div className="floating-bg">
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+      </div>
       <div className="top-right-buttons">
-        <button onClick={handleMainMenu} className="back-btn">
+        <button onClick={handleMainMenu} className="download-btn go-saved-btn">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M15 18l-6-6 6-6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          {t('mainMenu')}
+          Go to Saved Timelines
         </button>
         <button onClick={handleExport} className="download-btn">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

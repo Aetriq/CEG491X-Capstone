@@ -1,8 +1,10 @@
-﻿// CEG491X-Capstone/webapp/Frontend/src/pages/Menu.jsx
+// CEG491X-Capstone/webapp/Frontend/src/pages/Menu.jsx
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useBle } from '../contexts/BleConnectionContext';
+import { useDialog } from '../contexts/DialogContext';
 import { useTranslation } from 'react-i18next'; // NEW: i18n
 import axios from 'axios';
 import './Menu.css';
@@ -26,8 +28,20 @@ function sortTimelines(list, order) {
   return copy;
 }
 
+function getTimelineDisplayName(timeline) {
+  const source = timeline?.created_at || timeline?.date_generated;
+  if (!source) return `Timeline #${timeline?.id ?? ''}`.trim();
+  const d = new Date(source);
+  if (Number.isNaN(d.getTime())) return `Timeline #${timeline?.id ?? ''}`.trim();
+  const date = d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  return `${date} ${time}`;
+}
+
 function Menu() {
   const { user, logout } = useAuth();
+  const ble = useBle();
+  const { showConfirm, showAlert } = useDialog();
   const { t } = useTranslation(); // NEW: i18n
   const navigate = useNavigate();
   const [timelines, setTimelines] = useState([]);
@@ -74,20 +88,48 @@ function Menu() {
     navigate(`/timeline/${timelineId}`);
   };
 
+  const handleDeleteTimeline = async (e, timelineId) => {
+    e.stopPropagation();
+    const confirmed = await showConfirm('Delete this timeline? This cannot be undone.', {
+      title: 'Delete timeline',
+      confirmText: 'Delete',
+      cancelText: 'Cancel'
+    });
+    if (!confirmed) return;
+    try {
+      await axios.delete(`${API_URL}/timelines/${timelineId}`);
+      setTimelines((prev) => prev.filter((t) => t.id !== timelineId));
+    } catch (error) {
+      await showAlert(
+        error.response?.data?.error || error.message || 'Failed to delete timeline',
+        'Timelines'
+      );
+    }
+  };
+
   const safeList = timelines.filter((t) => t != null && t.id != null);
 
   return (
     <div className="menu-container">
+      <div className="floating-bg">
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+      </div>
       <div className="sidebar">
         <div className="logo">{t('appName')}</div>
         <div className="status-panel">
-          {t('device')}: {t('disconnected')}<br />
-          {t('status')}: === / ===
+          Device: <span>{ble.connectionStatus}</span><br />
+          Bluetooth: <span>{ble.deviceName}</span>
         </div>
         <div className="nav">
-          <div className="menu-item active" onClick={() => navigate('/home')}>{t('home')}</div>
-          <div className="menu-item" onClick={() => navigate('/home')}>{t('echoLogDevice')}</div>
-          <div className="menu-item" onClick={() => navigate('/settings')}>{t('configSettings')}</div>
+          <div className="menu-item" onClick={() => navigate('/home')}>{t('home')}</div>
+          <div className="menu-item active" onClick={() => navigate('/menu')}>Timelines</div>
+          <div className="menu-item" onClick={() => navigate('/settings')}>{t('settings')}</div>
           <div className="menu-item" onClick={() => navigate('/account')}>{t('account')}</div>
         </div>
         <div className="user-panel">
@@ -113,7 +155,6 @@ function Menu() {
             className="search-input"
           />
           <button onClick={handleSearch} className="btn btn-blue">{t('searchByDate')}</button>
-          <button onClick={loadTimelines} className="btn btn-green">{t('showAll')}</button>
           <select
             className="search-input"
             value={sortOrder}
@@ -126,6 +167,7 @@ function Menu() {
             <option value="desc">{t('newestFirst')}</option>
             <option value="asc">{t('oldestFirst')}</option>
           </select>
+          <button onClick={loadTimelines} className="btn btn-green">{t('showAll')}</button>
         </div>
 
         <div className="timelines-section">
@@ -141,14 +183,17 @@ function Menu() {
               {safeList.map((timeline) => (
                 <div key={timeline.id} className="timeline-card" onClick={() => handleViewTimeline(timeline.id)}>
                   <div className="timeline-header">
-                    <h3>{t('timeline')} #{timeline.id}</h3>
+                    <h3>{getTimelineDisplayName(timeline)}</h3>
                     <span className="timeline-date">
                       {timeline.date_generated ? new Date(timeline.date_generated).toLocaleDateString() : '—'}
                     </span>
                   </div>
                   <div className="timeline-info">
-                    <p>{t('device')}: {timeline.device_id || 'N/A'}</p>
+                    <p>Events: {timeline.events_count ?? 0}</p>
                     <p>{t('created')}: {timeline.created_at ? new Date(timeline.created_at).toLocaleString() : '—'}</p>
+                  </div>
+                  <div className="control-group" style={{ marginTop: 8 }}>
+                    <button className="btn btn-red" onClick={(e) => handleDeleteTimeline(e, timeline.id)}>Delete</button>
                   </div>
                 </div>
               ))}

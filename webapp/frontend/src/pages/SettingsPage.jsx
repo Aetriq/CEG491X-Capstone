@@ -1,15 +1,21 @@
 // CEG491X-Capstone/webapp/Frontend/src/pages/SettingsPage.jsx
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next'; // NEW
 import './SettingsPage.css';
+import './Home.css';
 import axios from 'axios';
-import { useDialog } from '../contexts/DialogContext';
+import { useAuth } from '../contexts/AuthContext';
+import { useBle } from '../contexts/BleConnectionContext';
 
 const API_URL = '/api';
 
-const SettingsPage = ({ onBack }) => {
+const SettingsPage = () => {
   const { t, i18n } = useTranslation(); // NEW
+  const { user, logout } = useAuth();
+  const ble = useBle();
+  const navigate = useNavigate();
   const codeToName = {
   'en': 'English',
   'fr': 'French',
@@ -28,7 +34,6 @@ const nameToCode = {
     recordingLength: 60,
     autoUpload: true,
     gpsEnabled: true,
-    notifications: true,
     theme: 'Light',
     language: 'en', // Use language codes (en, fr, es)
     activityThreshold: 1800,
@@ -115,42 +120,51 @@ const nameToCode = {
     i18n.changeLanguage(newLang);
   };
 
-  if (loading) {
-    return (
-      <div className="settings-container">
-        <div className="settings-header">
-          <button className="back-btn" onClick={onBack}>
-            ← {t('back')}
-          </button>
-          <h1>{t('settings')}</h1>
-          <p className="subtitle">{t('configurePreferences')}</p>
+  return (
+    <div className="home-shell">
+      <div className="floating-bg">
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+      </div>
+      <div className="sidebar">
+        <div className="logo">{t('appName')}</div>
+        <div className="status-panel">
+          Device: <span>{ble.connectionStatus}</span>
+          <br />
+          Bluetooth: <span>{ble.deviceName}</span>
+        </div>
+        <div className="menu-item" onClick={() => navigate('/home')}>{t('home')}</div>
+        <div className="menu-item" onClick={() => navigate('/menu')}>Timelines</div>
+        <div className="menu-item active" onClick={() => navigate('/settings')}>{t('settings')}</div>
+        <div className="menu-item" onClick={() => navigate('/account')}>{t('account')}</div>
+        <div className="user-panel">
+          <div className="avatar-circle">{user?.username?.charAt(0).toUpperCase() || 'U'}</div>
+          <div className="username">{user?.username || t('user')}</div>
+          <div className="logout-link" onClick={async () => { await logout(); navigate('/login'); }}>{t('logout')}</div>
         </div>
       </div>
-    );
-  }
-
-  return (
-    <div className="settings-container">
+    <div className="settings-container main-content">
       <div className="settings-header">
-        <button className="back-btn" onClick={onBack}>
-          ← {t('back')}
-        </button>
         <h1>{t('settings')}</h1>
         <p className="subtitle">{t('configurePreferences')}</p>
       </div>
 
+      {loading ? (
+        <div className="settings-grid">
+          <div className="settings-card">
+            <h3>{t('loading')}</h3>
+            <p className="subtext">{t('configurePreferences')}</p>
+          </div>
+        </div>
+      ) : (
       <div className="settings-grid">
         <div className="settings-card">
           <h3>{t('deviceSettings')}</h3>
-
-          <div className="form-group">
-            <label>{t('deviceName')}</label>
-            <input
-              type="text"
-              value={settings.deviceName}
-              onChange={(e) => setSettings({ ...settings, deviceName: e.target.value })}
-            />
-          </div>
 
           <div className="form-group">
             <label>{t('recordingLength')}: {settings.recordingLength}s</label>
@@ -227,19 +241,6 @@ const nameToCode = {
             <label>
               <input
                 type="checkbox"
-                checked={settings.notifications}
-                onChange={(e) =>
-                  setSettings({ ...settings, notifications: e.target.checked })
-                }
-              />
-              {t('notifications')}
-            </label>
-          </div>
-
-          <div className="form-group checkbox-group">
-            <label>
-              <input
-                type="checkbox"
                 checked={settings.theme === 'Dark'}
                 onChange={(e) =>
                   setSettings({
@@ -266,47 +267,18 @@ const nameToCode = {
           </div>
         </div>
 
-        <div className="settings-card">
-          <h3>{t('advanced')}</h3>
-
-          <div className="warning-section">
-            <p className="warning-text">{t('advancedWarning')}</p>
-
-            <button
-              className="btn btn-warning"
-              type="button"
-              onClick={() => alert(t('factoryReset') + ' not implemented yet.')}
-            >
-              {t('factoryReset')}
-            </button>
-
-            <button
-              className="btn btn-danger"
-              type="button"
-              onClick={() => alert(t('clearAllData') + ' not implemented yet.')}
-            >
-              {t('clearAllData')}
-            </button>
-
-            <button
-              className="btn btn-secondary"
-              type="button"
-              onClick={() => alert(t('exportConfig') + ' not implemented yet.')}
-            >
-              {t('exportConfig')}
-            </button>
-          </div>
-        </div>
       </div>
+      )}
 
       <div className="settings-actions">
-        <button className="btn btn-secondary" onClick={onBack}>
+        <button className="btn btn-secondary" onClick={() => navigate('/home')}>
           {t('cancel')}
         </button>
         <button className="btn btn-primary" onClick={handleSave}>
           {t('save')}
         </button>
       </div>
+    </div>
     </div>
   );
 };
