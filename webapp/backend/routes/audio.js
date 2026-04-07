@@ -209,7 +209,7 @@ function formatRecordedTime(date) {
 /** Build a single event per recording: time = recording start, transcript = full text.
  *  audioFilePath is the path used for playback (unfiltered/original audio).
  */
-function eventsWithRecordedTime(segments, baseTime, audioFilePath, fullText) {
+function eventsWithRecordedTime(segments, baseTime, audioFilePath, fullText, gps = null) {
   const base = baseTime instanceof Date ? baseTime : new Date(baseTime);
   const segs = segments || [];
   const transcript = (typeof fullText === 'string' && fullText.trim() !== '')
@@ -222,8 +222,8 @@ function eventsWithRecordedTime(segments, baseTime, audioFilePath, fullText) {
     event_number: 1,
     time: formatRecordedTime(base),
     transcript,
-    latitude: null,
-    longitude: null,
+    latitude: gps && Number.isFinite(gps.latitude) ? gps.latitude : null,
+    longitude: gps && Number.isFinite(gps.longitude) ? gps.longitude : null,
     // Use unfiltered/original audio for playback on the timeline
     audio_file_path: audioFilePath,
     audio_duration: audioDurationMs
@@ -338,6 +338,28 @@ function getRecordingStartTimeFromFileName(audioPath) {
     console.log('[AUDIO-DEBUG] ⚠️ Error parsing filename for recording time:', err.message);
   }
   return null;
+}
+
+function getGpsFromFileName(audioPathOrName) {
+  if (!audioPathOrName) return null;
+  try {
+    const base = path.basename(audioPathOrName);
+    const match = base.match(/^(\d{8})_(\d{6})_(-?\d{1,9})_(-?\d{1,9})(?:\.[^.]+)?$/);
+    if (!match) return null;
+    const rawLat = Number(match[3]);
+    const rawLon = Number(match[4]);
+    if (!Number.isFinite(rawLat) || !Number.isFinite(rawLon)) return null;
+
+    const latitude = rawLat / 1e6;
+    const longitude = rawLon / 1e6;
+    if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+
+    console.log('[AUDIO-DEBUG] 📍 GPS parsed from filename:', { file: base, latitude, longitude });
+    return { latitude, longitude };
+  } catch (err) {
+    console.log('[AUDIO-DEBUG] ⚠️ Error parsing GPS from filename:', err.message);
+    return null;
+  }
 }
 
 /**
@@ -770,6 +792,7 @@ router.post('/filter-and-transcribe', optionalAuth, (req, res, next) => {
 
     const { segments, text: fullText, filteredAudioPath, originalAudioPath } = await runFilterAndTranscribePipeline(inputFile, pythonCmd);
     const clientTime = req.body && req.body.recording_start_time;
+    const gpsFromFilename = getGpsFromFileName(req.file?.originalname || originalAudioPath);
     // Prefer client-provided recording time and fall back to original audio file mtime
     const recordingStartTime = resolveRecordingStartTime(originalAudioPath, clientTime);
 
@@ -807,6 +830,12 @@ router.post('/filter-and-transcribe', optionalAuth, (req, res, next) => {
         const timelineId = mockData.addTranscriptionTimeline(segments, originalAudioPath, recordingStartTime);
         const events = mockData.getEvents(timelineId);
         const timeline = mockData.getTimeline(timelineId);
+        if (gpsFromFilename && Array.isArray(events)) {
+          events.forEach((ev) => {
+            ev.latitude = gpsFromFilename.latitude;
+            ev.longitude = gpsFromFilename.longitude;
+          });
+        }
 
         console.log(`[AUDIO-DEBUG] ✅ MockData timeline created: ${timelineId}`);
         console.log(`[AUDIO-DEBUG]   Events count: ${events.length}`);
@@ -854,7 +883,7 @@ router.post('/filter-and-transcribe', optionalAuth, (req, res, next) => {
         message: 'Audio processed (mock mode)',
         timelineId: draftId,
         recording_start_time: recordingStartTime.toISOString(),
-        events: eventsWithRecordedTime(segments, recordingStartTime, originalAudioPath, fullText)
+        events: eventsWithRecordedTime(segments, recordingStartTime, originalAudioPath, fullText, gpsFromFilename)
       });
     }
 
@@ -864,7 +893,7 @@ router.post('/filter-and-transcribe', optionalAuth, (req, res, next) => {
         message: 'Audio filtered and transcribed. Log in and use "Save to database" on the timeline to store it.',
         timelineId: draftId,
         recording_start_time: recordingStartTime.toISOString(),
-        events: eventsWithRecordedTime(segments, recordingStartTime, originalAudioPath, fullText)
+        events: eventsWithRecordedTime(segments, recordingStartTime, originalAudioPath, fullText, gpsFromFilename)
       });
     }
 
@@ -880,7 +909,7 @@ router.post('/filter-and-transcribe', optionalAuth, (req, res, next) => {
       }
 
       const timeline = await Timeline.create(req.user.id, null);
-      const [singleEvent] = eventsWithRecordedTime(segments, recordingStartTime, originalAudioPath, fullText);
+      const [singleEvent] = eventsWithRecordedTime(segments, recordingStartTime, originalAudioPath, fullText, gpsFromFilename);
 
       console.log(`[AUDIO-DEBUG] 📋 Creating event in database:`);
       console.log(`[AUDIO-DEBUG]   Timeline ID: ${timeline.id}`);
@@ -891,8 +920,8 @@ router.post('/filter-and-transcribe', optionalAuth, (req, res, next) => {
         eventNumber: singleEvent.event_number,
         time: singleEvent.time,
         transcript: singleEvent.transcript,
-        latitude: null,
-        longitude: null,
+        latitude: singleEvent.latitude,
+        longitude: singleEvent.longitude,
         audioFilePath: originalAudioPath,
         audioDuration: singleEvent.audio_duration
       });
@@ -924,7 +953,7 @@ router.post('/filter-and-transcribe', optionalAuth, (req, res, next) => {
         message: 'Audio transcribed. Database unavailable; timeline saved locally. Log in and use "Save to database" to retry.',
         timelineId: draftId,
         recording_start_time: recordingStartTime.toISOString(),
-        events: eventsWithRecordedTime(segments, recordingStartTime, originalAudioPath, fullText)
+        events: eventsWithRecordedTime(segments, recordingStartTime, originalAudioPath, fullText, gpsFromFilename)
       });
     }
   } catch (error) {
@@ -1060,6 +1089,7 @@ router.post('/append/:timelineId', optionalAuth, (req, res, next) => {
 
     const { segments, text: fullText, filteredAudioPath, originalAudioPath } = await runFilterAndTranscribePipeline(inputFile, pythonCmd);
     const clientTime = req.body && req.body.recording_start_time;
+    const gpsFromFilename = getGpsFromFileName(req.file?.originalname || originalAudioPath);
     // Prefer client-provided recording time and fall back to original audio file mtime
     const recordingStartTime = resolveRecordingStartTime(originalAudioPath, clientTime);
 
@@ -1130,6 +1160,13 @@ router.post('/append/:timelineId', optionalAuth, (req, res, next) => {
         }
 
         const events = mockData.appendTranscriptionEvent(timelineId, segments, originalAudioPath, recordingStartTime);
+        if (gpsFromFilename && Array.isArray(events) && events.length > 0) {
+          const last = events[events.length - 1];
+          if (last) {
+            last.latitude = gpsFromFilename.latitude;
+            last.longitude = gpsFromFilename.longitude;
+          }
+        }
 
         // Verify audio paths in returned events
         console.log(`[AUDIO-DEBUG] ✅ Append complete, verifying audio paths:`);
@@ -1186,7 +1223,7 @@ router.post('/append/:timelineId', optionalAuth, (req, res, next) => {
       console.log(`[AUDIO-DEBUG] ⚠️⚠️⚠️ WARNING: Audio file missing before appending to database!`);
     }
 
-    const [singleEvent] = eventsWithRecordedTime(segments, recordingStartTime, originalAudioPath, fullText);
+    const [singleEvent] = eventsWithRecordedTime(segments, recordingStartTime, originalAudioPath, fullText, gpsFromFilename);
     const existingEvents = await Event.findByTimelineId(timelineId);
     const nextEventNumber = existingEvents.length
       ? Math.max(...existingEvents.map((e) => e.event_number || 0)) + 1
@@ -1201,8 +1238,8 @@ router.post('/append/:timelineId', optionalAuth, (req, res, next) => {
       eventNumber: nextEventNumber,
       time: singleEvent.time,
       transcript: singleEvent.transcript,
-      latitude: null,
-      longitude: null,
+      latitude: singleEvent.latitude,
+      longitude: singleEvent.longitude,
       audioFilePath: originalAudioPath,
       audioDuration: singleEvent.audio_duration
     });

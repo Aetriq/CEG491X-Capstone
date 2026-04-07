@@ -284,11 +284,11 @@ function TimelineView() {
         <main className="content">
           <div className="header-row">
             <div>
-              <div className="title">Event Log</div>
+              <div className="title">{t('eventLog')}</div>
               {ble.isConnected && (
-                <div className="ble-timeline-status" title="EchoLog device still connected via Bluetooth">
+                <div className="ble-timeline-status" title={t('bleConnectedTooltip')}>
                   <span className="ble-dot" aria-hidden />
-                  BLE connected: {ble.deviceName}
+                  {t('bleConnectedLabel', { device: ble.deviceName })}
                 </div>
               )}
             </div>

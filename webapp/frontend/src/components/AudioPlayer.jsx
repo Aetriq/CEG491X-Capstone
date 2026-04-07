@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import './AudioPlayer.css';
 
 const API_URL = '/api';
 
 function AudioPlayer({ eventId, audioFilePath }) {
+  const { t } = useTranslation();
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -92,7 +94,7 @@ function AudioPlayer({ eventId, audioFilePath }) {
           className="play-button"
           onClick={togglePlay}
           disabled={loading}
-          title={isPlaying ? 'Pause' : 'Play'}
+          title={isPlaying ? t('pause') : t('play')}
         >
           {loading ? (
             <span className="loading-spinner">⏳</span>

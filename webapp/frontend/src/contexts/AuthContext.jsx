@@ -13,6 +13,9 @@ export function AuthProvider({ children }) {
     // Check if user is already logged in
     const token = localStorage.getItem('token');
     if (token) {
+      // Set auth header immediately to avoid race conditions where other pages
+      // fire API requests before verifyToken() finishes.
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       verifyToken(token);
     } else {
       setLoading(false);

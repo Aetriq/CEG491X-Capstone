@@ -1,20 +1,33 @@
-import React, { useState, useEffect } from 'react';
+// CEG491X-Capstone/webapp/Frontend/src/pages/SettingsPage.jsx
+
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next'; // NEW
 import './SettingsPage.css';
+import './Home.css';
 import axios from 'axios';
+import { useAuth } from '../contexts/AuthContext';
+import { useBle } from '../contexts/BleConnectionContext';
 import { useDialog } from '../contexts/DialogContext';
 
 const API_URL = '/api';
 
-const SettingsPage = ({ onBack }) => {
+const SettingsPage = () => {
+  const { t, i18n } = useTranslation(); // NEW
+  const { user, logout } = useAuth();
+  const ble = useBle();
+  const navigate = useNavigate();
   const { showAlert } = useDialog();
+  const languageTouchedRef = useRef(false);
+  const languageSaveTimerRef = useRef(null);
+  const latestSettingsRef = useRef(null);
   const [settings, setSettings] = useState({
     deviceName: 'EchoLog-01',
     recordingLength: 60,
     autoUpload: true,
     gpsEnabled: true,
-    notifications: true,
     theme: 'Light',
-    language: 'English',
+    language: 'en', // Use language codes (en, fr, es)
     activityThreshold: 1800,
     activityTime: 10,
     inactivityThreshold: 1500,
@@ -23,12 +36,69 @@ const SettingsPage = ({ onBack }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    latestSettingsRef.current = settings;
+  }, [settings]);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const res = await axios.get(`${API_URL}/settings/me`);
         if (!cancelled && res.data && res.data.settings) {
-          setSettings(prev => ({ ...prev, ...res.data.settings }));
+          const apiSettings = res.data.settings;
+          // Backend now stores language codes. Keep backward compatibility with older stored names.
+          const nameToCode = {
+            English: 'en',
+            French: 'fr',
+            Spanish: 'es',
+            Chinese: 'zh'
+          };
+          const mappedLanguage =
+            nameToCode[apiSettings.language] ||
+            (typeof apiSettings.language === 'string' ? apiSettings.language : 'en') ||
+            'en';
+
+          // Prefer localStorage language to avoid snap-back if DB is stale.
+          let persistedLang = null;
+          try {
+            persistedLang = localStorage.getItem('i18nextLng');
+          } catch {
+            persistedLang = null;
+          }
+          const desiredLanguage = persistedLang || mappedLanguage || 'en';
+
+          // Never overwrite a language the user just picked (prevents snap-back to English).
+          setSettings(prev => {
+            const next = { ...prev, ...apiSettings };
+            if (!languageTouchedRef.current) {
+              next.language = desiredLanguage;
+            }
+            return next;
+          });
+
+          if (!languageTouchedRef.current && i18n.language !== desiredLanguage) {
+            try {
+              localStorage.setItem('i18nextLng', desiredLanguage);
+            } catch {}
+            i18n.changeLanguage(desiredLanguage);
+          }
+
+          // If localStorage differs from backend, sync it back (best-effort).
+          if (
+            desiredLanguage &&
+            mappedLanguage &&
+            desiredLanguage !== mappedLanguage
+          ) {
+            try {
+              await axios.put(`${API_URL}/settings/me`, {
+                ...apiSettings,
+                language: desiredLanguage
+              });
+            } catch (syncErr) {
+              // Ignore; localStorage will still keep language stable.
+              console.warn('Language sync to backend failed:', syncErr);
+            }
+          }
         }
       } catch (err) {
         console.error('Error loading settings:', err);
@@ -36,79 +106,136 @@ const SettingsPage = ({ onBack }) => {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
+  }, [i18n]);
+
+  // One-time sync so SettingsPage never snaps back to English.
+  useEffect(() => {
+    try {
+      const persisted = localStorage.getItem('i18nextLng');
+      const desired = persisted || settings.language;
+      if (desired && i18n.language !== desired) {
+        i18n.changeLanguage(desired);
+      }
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Apply dark mode class when theme is Dark and persist in localStorage
+  // Apply dark mode when theme changes
   useEffect(() => {
     if (settings.theme === 'Dark') {
       document.body.classList.add('dark-mode');
-      try {
-        localStorage.setItem('theme', 'Dark');
-      } catch {}
+      localStorage.setItem('theme', 'Dark');
     } else {
       document.body.classList.remove('dark-mode');
-      try {
-        localStorage.setItem('theme', 'Light');
-      } catch {}
+      localStorage.setItem('theme', 'Light');
     }
   }, [settings.theme]);
 
+
+
   const handleSave = async () => {
     try {
+      // Persist language code consistently with backend storage.
       await axios.put(`${API_URL}/settings/me`, settings);
-      console.log('Saving settings:', settings);
-      await showAlert('Settings saved successfully!', 'Settings');
+      await showAlert(i18n.t('settingsSaved'), t('settings'));
     } catch (err) {
       console.error('Error saving settings:', err);
-      await showAlert(
-        'Failed to save settings: ' + (err.response?.data?.error || err.message),
-        'Settings'
-      );
+      await showAlert(i18n.t('errorSaving') + ': ' + (err.response?.data?.error || err.message), t('settings'));
     }
   };
 
-  if (loading) {
-    return (
-      <div className="settings-container">
-        <div className="settings-header">
-          <button className="back-btn" onClick={onBack}>
-            ← Back
-          </button>
-          <h1>Configuration Settings</h1>
-          <p className="subtitle">Loading settings…</p>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    console.log('=== i18n Debug ===');
+    console.log('i18n initialized:', i18n.isInitialized);
+    console.log('Current language:', i18n.language);
+    console.log('Available languages:', Object.keys(i18n.services?.resourceStore?.data || {}));
+    console.log('Sample translation:', i18n.t('appName'));
+  }, []);
+
+  const handleLanguageChange = (e) => {
+    const newLang = e.target.value;
+    languageTouchedRef.current = true;
+    // Save first
+    try {
+      localStorage.setItem('i18nextLng', newLang);
+    } catch {}
+
+    // Update state and also persist language immediately (debounced)
+    setSettings(prev => ({ ...prev, language: newLang }));
+    // Then change
+    i18n.changeLanguage(newLang);
+
+    // Debounced autosave so user doesn't lose the change before clicking Save.
+    if (languageSaveTimerRef.current) {
+      clearTimeout(languageSaveTimerRef.current);
+    }
+    languageSaveTimerRef.current = setTimeout(async () => {
+      try {
+        const base = latestSettingsRef.current || settings;
+        const payload = { ...base, language: newLang };
+        await axios.put(`${API_URL}/settings/me`, payload);
+      } catch (err) {
+        console.error('Error auto-saving language:', err);
+        // Don't block the UI; just notify.
+        await showAlert(
+          i18n.t('errorSaving') + ': ' + (err.response?.data?.error || err.message),
+          t('settings')
+        );
+      }
+    }, 400);
+  };
 
   return (
-    <div className="settings-container">
+    <div className="home-shell">
+      <div className="floating-bg">
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+        <div className="square"></div>
+      </div>
+      <div className="sidebar">
+        <div className="logo">{t('appName')}</div>
+        <div className="status-panel">
+          Device: <span>{ble.connectionStatus}</span>
+          <br />
+          Bluetooth: <span>{ble.deviceName}</span>
+        </div>
+        <div className="menu-item" onClick={() => navigate('/home')}>{t('home')}</div>
+        <div className="menu-item" onClick={() => navigate('/menu')}>Timelines</div>
+        <div className="menu-item active" onClick={() => navigate('/settings')}>{t('settings')}</div>
+        <div className="menu-item" onClick={() => navigate('/account')}>{t('account')}</div>
+        <div className="user-panel">
+          <div className="avatar-circle">{user?.username?.charAt(0).toUpperCase() || 'U'}</div>
+          <div className="username">{user?.username || t('user')}</div>
+          <div className="logout-link" onClick={async () => { await logout(); navigate('/login'); }}>{t('logout')}</div>
+        </div>
+      </div>
+    <div className="settings-container main-content">
       <div className="settings-header">
-        <button className="back-btn" onClick={onBack}>
-          ← Back
-        </button>
-        <h1>Configuration Settings</h1>
-        <p className="subtitle">Manage device parameters and preferences</p>
+        <h1>{t('settings')}</h1>
+        <p className="subtitle">{t('configurePreferences')}</p>
       </div>
 
+      {loading ? (
+        <div className="settings-grid">
+          <div className="settings-card">
+            <h3>{t('loading')}</h3>
+            <p className="subtext">{t('configurePreferences')}</p>
+          </div>
+        </div>
+      ) : (
       <div className="settings-grid">
         <div className="settings-card">
-          <h3>Device Settings</h3>
+          <h3>{t('deviceSettings')}</h3>
 
           <div className="form-group">
-            <label>Device Name</label>
-            <input
-              type="text"
-              value={settings.deviceName}
-              onChange={(e) => setSettings({ ...settings, deviceName: e.target.value })}
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Audio Recording Length (s): {settings.recordingLength}s</label>
+            <label>{t('recordingLength')}: {settings.recordingLength}s</label>
             <input
               type="range"
               min="10"
@@ -125,7 +252,7 @@ const SettingsPage = ({ onBack }) => {
           </div>
 
           <div className="form-group">
-            <label>Activity Threshold</label>
+            <label>{t('activityThreshold')}</label>
             <input
               type="number"
               value={settings.activityThreshold}
@@ -136,7 +263,7 @@ const SettingsPage = ({ onBack }) => {
           </div>
 
           <div className="form-group">
-            <label>Activity Time (ms)</label>
+            <label>{t('activityTime')} (ms)</label>
             <input
               type="number"
               value={settings.activityTime}
@@ -147,7 +274,7 @@ const SettingsPage = ({ onBack }) => {
           </div>
 
           <div className="form-group">
-            <label>Inactivity Threshold</label>
+            <label>{t('inactivityThreshold')}</label>
             <input
               type="number"
               value={settings.inactivityThreshold}
@@ -161,7 +288,7 @@ const SettingsPage = ({ onBack }) => {
           </div>
 
           <div className="form-group">
-            <label>Inactivity Time (ms)</label>
+            <label>{t('inactivityTime')} (ms)</label>
             <input
               type="number"
               value={settings.inactivityTime}
@@ -176,20 +303,7 @@ const SettingsPage = ({ onBack }) => {
         </div>
 
         <div className="settings-card">
-          <h3>Application Settings</h3>
-
-          <div className="form-group checkbox-group">
-            <label>
-              <input
-                type="checkbox"
-                checked={settings.notifications}
-                onChange={(e) =>
-                  setSettings({ ...settings, notifications: e.target.checked })
-                }
-              />
-              Enable notifications
-            </label>
-          </div>
+          <h3>{t('appSettings')}</h3>
 
           <div className="form-group checkbox-group">
             <label>
@@ -203,67 +317,38 @@ const SettingsPage = ({ onBack }) => {
                   })
                 }
               />
-              Enable dark mode
+              {t('dark')} (Dark mode)
             </label>
           </div>
 
           <div className="form-group">
-            <label>Language</label>
+            <label>{t('language')}</label>
             <select
               value={settings.language}
-              onChange={(e) => setSettings({ ...settings, language: e.target.value })}
+              onChange={handleLanguageChange}
             >
-              <option>English</option>
-              <option>French</option>
-              <option>Spanish</option>
+              <option value="en">{t('english')}</option>
+              <option value="fr">{t('french')}</option>
+              <option value="es">{t('spanish')}</option>
+              <option value="zh">中文</option>
             </select>
           </div>
         </div>
 
-        <div className="settings-card">
-          <h3>Advanced</h3>
-
-          <div className="warning-section">
-            <p className="warning-text">⚠️ Advanced settings - proceed with caution</p>
-
-            <button
-              className="btn btn-warning"
-              type="button"
-              onClick={() => showAlert('Factory reset not implemented yet.', 'Advanced')}
-            >
-              Factory Reset Device
-            </button>
-
-            <button
-              className="btn btn-danger"
-              type="button"
-              onClick={() => showAlert('Clear all data not implemented yet.', 'Advanced')}
-            >
-              Clear All Data
-            </button>
-
-            <button
-              className="btn btn-secondary"
-              type="button"
-              onClick={() => showAlert('Export configuration not implemented yet.', 'Advanced')}
-            >
-              Export Configuration
-            </button>
-          </div>
-        </div>
       </div>
+      )}
 
       <div className="settings-actions">
-        <button className="btn btn-secondary" onClick={onBack}>
-          Cancel
+        <button className="btn btn-secondary" onClick={() => navigate('/home')}>
+          {t('cancel')}
         </button>
         <button className="btn btn-primary" onClick={handleSave}>
-          Save Settings
+          {t('save')}
         </button>
       </div>
+    </div>
     </div>
   );
 };
 
 export default SettingsPage;
-
