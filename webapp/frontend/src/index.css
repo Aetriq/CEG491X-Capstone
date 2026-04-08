@@ -1,0 +1,107 @@
+:root {
+  --teal: #1f8dc0;
+  --teal-dark: #1f7f88;
+  --panel-bg: #dff2f4;
+  --accent: #00133d;
+  --muted: #7b8b91;
+  --row-alt: #e9f3f4;
+  --white: #ffffff;
+  --container-bg: #f7fafb;
+  --shadow: 0 6px 18px rgba(0,0,0,0.12);
+}
+
+@font-face {
+  font-family: 'Frutiger';
+  src: url('/FrutigerLTStd55Roman.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Frutiger', "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: linear-gradient(180deg, #f4fbfd 0%, #fbfcfe 100%);
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 17, 34, 0.55);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+}
+
+.app-dialog {
+  width: min(520px, 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(239, 248, 252, 0.98) 100%);
+  border: 1px solid rgba(26, 113, 153, 0.3);
+  border-radius: 14px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+  padding: 18px;
+}
+
+.app-dialog-title {
+  color: #0f4c66;
+  margin-bottom: 10px;
+}
+
+.app-dialog-message {
+  color: #23485b;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.app-dialog-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.app-dialog-btn {
+  border: none;
+  padding: 9px 16px;
+  border-radius: 8px;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.app-dialog-btn-confirm {
+  background: linear-gradient(135deg, #ff9800, #f57c00);
+}
+
+.app-dialog-btn-cancel {
+  background: linear-gradient(135deg, #607d8b, #455a64);
+}
+
+body.dark-mode .app-dialog {
+  background: linear-gradient(180deg, rgba(4, 36, 58, 0.98) 0%, rgba(3, 27, 44, 0.98) 100%);
+  border: 1px solid rgba(125, 211, 252, 0.35);
+}
+
+body.dark-mode .app-dialog-title {
+  color: #7dd3fc;
+}
+
+body.dark-mode .app-dialog-message {
+  color: #dbeafe;
+}

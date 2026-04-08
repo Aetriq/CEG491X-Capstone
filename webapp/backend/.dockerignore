@@ -1,0 +1,6 @@
+﻿# Never copy host node_modules - native sqlite3 must be built for Linux inside the image
+node_modules
+npm-debug.log*
+.git
+.env
+*.md

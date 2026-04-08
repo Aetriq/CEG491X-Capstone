@@ -1,0 +1,385 @@
+/* TimelineView styles matching original HTML design */
+
+.timeline-view-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #e0e8ef;
+  position: relative;
+}
+
+.top-right-buttons {
+  position: fixed;
+  top: 15px;
+  right: 30px;
+  display: flex;
+  gap: 10px;
+  z-index: 1000;
+  align-items: center;
+}
+
+.bottom-right-buttons {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  z-index: 1000;
+}
+
+.back-btn,
+.download-btn,
+.save-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: white;
+}
+
+.back-btn {
+  background: linear-gradient(135deg, #455A64, #263238);
+}
+
+.back-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.download-btn {
+  background: linear-gradient(135deg, #2196F3, #1976D2);
+}
+
+.download-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.save-btn {
+  background: linear-gradient(135deg, #4CAF50, #388E3C);
+}
+
+.save-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.save-db-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: flex-end;
+}
+
+.save-db-btn {
+  margin: 0;
+}
+
+.cache-hint {
+  font-size: 12px;
+  color: #666;
+  font-style: italic;
+}
+
+.timeline-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.content {
+  flex: 1;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fdfdfd;
+  overflow-y: auto;
+}
+
+/* Dark mode to match Home/Menu/Settings/Account */
+body.dark-mode .timeline-view-container {
+  background: #022033; /* darker blue than sidebar */
+}
+
+body.dark-mode .timeline-layout .sidebar {
+  background: linear-gradient(180deg, #1a7199 0%, #0f4c66 100%);
+}
+
+body.dark-mode .content {
+  background: #022033;
+  color: #e5e7eb;
+}
+
+body.dark-mode .header-row {
+  background: rgba(10, 54, 88, 0.95);
+  border-bottom-color: rgba(148, 196, 224, 0.5);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+}
+
+body.dark-mode .title,
+body.dark-mode .subtitle {
+  color: #ffffff;
+}
+
+body.dark-mode .table {
+  background: rgba(10, 54, 88, 0.95); /* lighter than background */
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
+body.dark-mode .table thead {
+  background: rgba(5, 36, 60, 0.95);
+}
+
+body.dark-mode .table th,
+body.dark-mode .table td {
+  color: #ffffff;
+  border-bottom-color: rgba(15, 23, 42, 0.9);
+}
+
+body.dark-mode .table tbody tr:hover {
+  background: rgba(15, 46, 78, 0.95);
+}
+
+body.dark-mode .rownum {
+  background: #38bdf8;
+  color: #022033;
+}
+
+body.dark-mode .time,
+body.dark-mode .time-date,
+body.dark-mode .position,
+body.dark-mode .no-audio {
+  color: #e5e7eb;
+}
+
+body.dark-mode .edit-textarea {
+  background: rgba(15, 23, 42, 0.9);
+  color: #ffffff;
+  border-color: rgba(148, 196, 224, 0.5);
+}
+
+body.dark-mode .loading,
+body.dark-mode .error {
+  color: #e5e7eb;
+}
+
+.header-row {
+  background: white;
+  padding: 15px 30px;
+  border-bottom: 1px solid #eee;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.title {
+  font-size: 20px;
+  font-weight: bold;
+  color: #2c3e50;
+  margin-bottom: 5px;
+}
+
+.ble-timeline-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a7199;
+  background: rgba(26, 113, 153, 0.12);
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(26, 113, 153, 0.25);
+}
+
+.ble-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.35);
+}
+
+body.dark-mode .ble-timeline-status {
+  color: #7dd3fc;
+  background: rgba(7, 52, 82, 0.95);
+  border-color: rgba(125, 211, 252, 0.35);
+}
+
+.subtitle {
+  font-size: 13px;
+  color: #607d8b;
+}
+
+.table-wrap {
+  padding: 30px;
+  overflow-x: auto;
+}
+
+.table {
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table thead {
+  background: #f5f5f5;
+}
+
+.table th {
+  text-align: left;
+  padding: 12px;
+  color: #555;
+  border-bottom: 2px solid #eee;
+  font-weight: 600;
+}
+
+.table td {
+  padding: 12px;
+  border-bottom: 1px solid #f0f0f0;
+  color: #333;
+  transition: 0.2s;
+}
+
+.table tbody tr {
+  transition: 0.2s;
+}
+
+.table tbody tr:hover {
+  background: #f0f8ff;
+  transform: scale(1.005);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.rownum {
+  display: inline-block;
+  width: 32px;
+  height: 32px;
+  line-height: 32px;
+  text-align: center;
+  background: #1a7199;
+  color: white;
+  border-radius: 50%;
+  font-weight: bold;
+  font-size: 13px;
+}
+
+.time {
+  font-family: monospace;
+  font-size: 13px;
+  color: #555;
+}
+
+.time-date {
+  font-size: 11px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.transcript {
+  max-width: 500px;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+.edit-textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+  min-height: 60px;
+}
+
+.position {
+  font-family: monospace;
+  font-size: 12px;
+  color: #666;
+  white-space: pre-line;
+}
+
+.audio-cell {
+  text-align: right;
+}
+
+.no-audio {
+  color: #999;
+  font-style: italic;
+  font-size: 12px;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.btn-edit,
+.btn-save,
+.btn-cancel {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.btn-edit {
+  background: linear-gradient(135deg, #2196F3, #1976D2);
+  color: white;
+}
+
+.btn-edit:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+.btn-save {
+  background: linear-gradient(135deg, #4CAF50, #388E3C);
+  color: white;
+}
+
+.btn-save:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+.btn-cancel {
+  background: #999;
+  color: white;
+}
+
+.btn-cancel:hover {
+  background: #777;
+}
+
+.loading,
+.error {
+  padding: 40px;
+  text-align: center;
+  font-size: 18px;
+  color: #666;
+}
+
+.error {
+  color: #d32f2f;
+}
