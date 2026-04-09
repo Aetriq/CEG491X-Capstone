@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+const mapboxKey = import.meta.env.VITE_MAPBOX_API_KEY;
 
 export default function InteractiveMap({ longitude, latitude }) {
   const mapContainer = useRef(null);
@@ -10,8 +11,7 @@ export default function InteractiveMap({ longitude, latitude }) {
   const markerRef = useRef(null);
 
   useEffect(() => {
-   mapboxgl.accessToken = process.env.MAPBOX_API_KEY;
-    
+   mapboxgl.accessToken = mapboxKey;
    mapRef.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: "mapbox://styles/mapbox/standard-satellite",
