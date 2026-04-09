@@ -1,8 +1,5 @@
 ![titlecard](/repo_img/title.png)
 
-<p align="center">
-  <img src="/repo_img/logo2.png" alt="Project Logo" width="250" height="250">
-</p>
 <h1 align="center">Project EchoLog</h1>
 
 <p align="center">
