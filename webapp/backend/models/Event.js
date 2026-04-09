@@ -1,3 +1,5 @@
+// webapp/Backend/models/Events.js
+
 const { supabase } = require('../database/supabase');
 
 class Event {

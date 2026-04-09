@@ -1,9 +1,12 @@
+// webapp/Frontend/src/pages/Home.jsx
+
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useDialog } from '../contexts/DialogContext';
 import { useBle } from '../contexts/BleConnectionContext';
 import './Home.css';
+import { getApiUrl } from '../utils/api';
 
 //ONLY TEMP
 import InteractiveMap from "../components/InteractiveMap"
@@ -27,7 +30,7 @@ async function transcribeAudioQueued(audioFile, filename, recordingStartTimeISO)
         const healthController = new AbortController();
         const healthTimeout = setTimeout(() => healthController.abort(), 5000); // 5 second timeout
         
-        const healthCheck = await fetch('/api/health', { 
+        const healthCheck = await fetch(getApiUrl('/health'), { 
           method: 'GET',
           signal: healthController.signal
         });
@@ -58,7 +61,7 @@ async function transcribeAudioQueued(audioFile, filename, recordingStartTimeISO)
         formData.append('recording_start_time', recordingStartTimeISO);
       }
 
-      const response = await fetch('/api/audio/filter-and-transcribe', {
+      const response = await fetch(getApiUrl('/audio/filter-and-transcribe'), {
         method: 'POST',
         headers: authHeaders(),
         body: formData
@@ -97,7 +100,7 @@ async function appendAudioQueued(timelineId, audioFile, filename, recordingStart
         const healthController = new AbortController();
         const healthTimeout = setTimeout(() => healthController.abort(), 5000); // 5 second timeout
         
-        const healthCheck = await fetch('/api/health', { 
+        const healthCheck = await fetch(getApiUrl('/health'), { 
           method: 'GET',
           signal: healthController.signal
         });
@@ -134,12 +137,12 @@ async function appendAudioQueued(timelineId, audioFile, filename, recordingStart
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minutes timeout
         
-        response = await fetch(`/api/audio/append/${timelineId}`, {
-          method: 'POST',
-          headers: authHeaders(),
-          body: formData,
-          signal: controller.signal
-        });
+        response = await fetch(getApiUrl(`/audio/append/${timelineId}`), {
+        method: 'POST',
+        headers: authHeaders(),
+        body: formData,
+        signal: controller.signal
+      });
         
         clearTimeout(timeoutId);
       } catch (fetchError) {

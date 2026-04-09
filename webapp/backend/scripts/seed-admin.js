@@ -1,4 +1,6 @@
-﻿require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
+﻿// webapp/Backend/scripts/seed-admin.js
+
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const { db, closeDatabase } = require('../database/db');

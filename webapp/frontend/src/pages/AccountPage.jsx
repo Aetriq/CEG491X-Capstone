@@ -1,3 +1,5 @@
+// webapp/Frontend/src/pages/AccountPage.jsx
+
 import React, { useState, useEffect } from 'react';
 import './AccountPage.css';
 import axios from 'axios';

@@ -1,4 +1,6 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿// webapp/Frontend/src/pages/Menu.jsx
+
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
