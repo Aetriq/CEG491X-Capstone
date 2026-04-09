@@ -1,3 +1,5 @@
+![titlecard](/repo_img/title.png)
+
 <p align="center">
   <img src="/repo_img/logo2.png" alt="Project Logo" width="250" height="250">
 </p>
@@ -26,6 +28,21 @@
 Based on the needs of our client, EchoLog is designed to be applicable with similar goals of recording and storing different forms of logs in high intensity/stress environments. It can also can provide value to any party from individuals that are spending out of pocket to improve their volunteering experience, to organizations with varying budgets. 
 
 ![Concept Image Render](/repo_img/repo-img1.png)
+![Specifications](/repo_img/repo-img2.png)
+
+## Development Images
+<p align="center">
+  <img src="/repo_img/devimg4.jpg" alt="devimg" width="600" height="600">
+</p>
+<p align="center">
+  <img src="/repo_img/devimg1.jpg" alt="devimg" width="600" height="600">
+</p>
+<p align="center">
+  <img src="/repo_img/devimg3.jpg" alt="devimg" width="600" height="600">
+</p>
+<p align="center">
+  <img src="/repo_img/devimg2.jpg" alt="devimg" width="600" height="600">
+</p>
 
 ---
 
