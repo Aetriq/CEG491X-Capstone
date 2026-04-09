@@ -1,4 +1,4 @@
-﻿// webapp/Backend/middleware/auth.js
+﻿// CEG491X-Capstone/webapp/Backend/middleware/auth.js
 
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');

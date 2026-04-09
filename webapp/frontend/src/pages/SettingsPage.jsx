@@ -1,6 +1,6 @@
 // CEG491X-Capstone/webapp/Frontend/src/pages/SettingsPage.jsx
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next'; // NEW
 import './SettingsPage.css';
@@ -8,7 +8,6 @@ import './Home.css';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import { useBle } from '../contexts/BleConnectionContext';
-import { useDialog } from '../contexts/DialogContext';
 
 const API_URL = '/api';
 
@@ -17,10 +16,19 @@ const SettingsPage = () => {
   const { user, logout } = useAuth();
   const ble = useBle();
   const navigate = useNavigate();
-  const { showAlert } = useDialog();
-  const languageTouchedRef = useRef(false);
-  const languageSaveTimerRef = useRef(null);
-  const latestSettingsRef = useRef(null);
+  const codeToName = {
+  'en': 'English',
+  'fr': 'French',
+  'es': 'Spanish',
+  'zh': 'Chinese'
+  };
+
+const nameToCode = {
+  'English': 'en',
+  'French': 'fr',
+  'Spanish': 'es',
+  'Chinese': 'zh'
+  };
   const [settings, setSettings] = useState({
     deviceName: 'EchoLog-01',
     recordingLength: 60,
@@ -35,9 +43,6 @@ const SettingsPage = () => {
   });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    latestSettingsRef.current = settings;
-  }, [settings]);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,58 +51,15 @@ const SettingsPage = () => {
         const res = await axios.get(`${API_URL}/settings/me`);
         if (!cancelled && res.data && res.data.settings) {
           const apiSettings = res.data.settings;
-          // Backend now stores language codes. Keep backward compatibility with older stored names.
-          const nameToCode = {
-            English: 'en',
-            French: 'fr',
-            Spanish: 'es',
-            Chinese: 'zh'
-          };
-          const mappedLanguage =
-            nameToCode[apiSettings.language] ||
-            (typeof apiSettings.language === 'string' ? apiSettings.language : 'en') ||
-            'en';
-
-          // Prefer localStorage language to avoid snap-back if DB is stale.
-          let persistedLang = null;
-          try {
-            persistedLang = localStorage.getItem('i18nextLng');
-          } catch {
-            persistedLang = null;
-          }
-          const desiredLanguage = persistedLang || mappedLanguage || 'en';
-
-          // Never overwrite a language the user just picked (prevents snap-back to English).
-          setSettings(prev => {
-            const next = { ...prev, ...apiSettings };
-            if (!languageTouchedRef.current) {
-              next.language = desiredLanguage;
-            }
-            return next;
-          });
-
-          if (!languageTouchedRef.current && i18n.language !== desiredLanguage) {
-            try {
-              localStorage.setItem('i18nextLng', desiredLanguage);
-            } catch {}
-            i18n.changeLanguage(desiredLanguage);
-          }
-
-          // If localStorage differs from backend, sync it back (best-effort).
-          if (
-            desiredLanguage &&
-            mappedLanguage &&
-            desiredLanguage !== mappedLanguage
-          ) {
-            try {
-              await axios.put(`${API_URL}/settings/me`, {
-                ...apiSettings,
-                language: desiredLanguage
-              });
-            } catch (syncErr) {
-              // Ignore; localStorage will still keep language stable.
-              console.warn('Language sync to backend failed:', syncErr);
-            }
+          const mappedLanguage = nameToCode[apiSettings.language] || 'en';
+          setSettings(prev => ({
+            ...prev,
+            ...apiSettings,
+            language: mappedLanguage
+          }));
+          // ONLY change language if it differs from current AND wasn't manually set
+          if (i18n.language !== mappedLanguage && !localStorage.getItem('i18nextLng')) {
+            i18n.changeLanguage(mappedLanguage);
           }
         }
       } catch (err) {
@@ -108,20 +70,6 @@ const SettingsPage = () => {
     })();
     return () => { cancelled = true; };
   }, [i18n]);
-
-  // One-time sync so SettingsPage never snaps back to English.
-  useEffect(() => {
-    try {
-      const persisted = localStorage.getItem('i18nextLng');
-      const desired = persisted || settings.language;
-      if (desired && i18n.language !== desired) {
-        i18n.changeLanguage(desired);
-      }
-    } catch {
-      // ignore
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Apply dark mode when theme changes
   useEffect(() => {
@@ -138,12 +86,20 @@ const SettingsPage = () => {
 
   const handleSave = async () => {
     try {
-      // Persist language code consistently with backend storage.
-      await axios.put(`${API_URL}/settings/me`, settings);
-      await showAlert(i18n.t('settingsSaved'), t('settings'));
+      const settingsToSend = {
+        ...settings,
+        language: codeToName[settings.language] || 'English'
+      };
+      await axios.put(`${API_URL}/settings/me`, settingsToSend);
+      
+      // Show confirmation with current language
+      alert(i18n.t('settingsSaved')); // This will now use the NEW language
+      
+      // Force re-render to apply translations immediately
+      window.location.reload(); // Optional: ensures all components re-render with new language
     } catch (err) {
       console.error('Error saving settings:', err);
-      await showAlert(i18n.t('errorSaving') + ': ' + (err.response?.data?.error || err.message), t('settings'));
+      alert(i18n.t('errorSaving') + ': ' + (err.response?.data?.error || err.message));
     }
   };
 
@@ -153,39 +109,15 @@ const SettingsPage = () => {
     console.log('Current language:', i18n.language);
     console.log('Available languages:', Object.keys(i18n.services?.resourceStore?.data || {}));
     console.log('Sample translation:', i18n.t('appName'));
-  }, []);
+  }, [i18n]);
 
   const handleLanguageChange = (e) => {
     const newLang = e.target.value;
-    languageTouchedRef.current = true;
     // Save first
-    try {
-      localStorage.setItem('i18nextLng', newLang);
-    } catch {}
-
-    // Update state and also persist language immediately (debounced)
-    setSettings(prev => ({ ...prev, language: newLang }));
+    localStorage.setItem('i18nextLng', newLang);
+    setSettings({ ...settings, language: newLang });
     // Then change
     i18n.changeLanguage(newLang);
-
-    // Debounced autosave so user doesn't lose the change before clicking Save.
-    if (languageSaveTimerRef.current) {
-      clearTimeout(languageSaveTimerRef.current);
-    }
-    languageSaveTimerRef.current = setTimeout(async () => {
-      try {
-        const base = latestSettingsRef.current || settings;
-        const payload = { ...base, language: newLang };
-        await axios.put(`${API_URL}/settings/me`, payload);
-      } catch (err) {
-        console.error('Error auto-saving language:', err);
-        // Don't block the UI; just notify.
-        await showAlert(
-          i18n.t('errorSaving') + ': ' + (err.response?.data?.error || err.message),
-          t('settings')
-        );
-      }
-    }, 400);
   };
 
   return (

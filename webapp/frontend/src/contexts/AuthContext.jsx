@@ -1,12 +1,11 @@
-// webapp/Frontend/src/contexts/AuthContext.jsx
+// CEG491X-Capstone/webapp/Frontend/src/contexts/AuthContext.jsx
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
-import { getApiUrl } from '../utils/api';
 
 const AuthContext = createContext();
 
-// const API_URL = '/api'; removed
+const API_URL = '/api';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -27,7 +26,7 @@ export function AuthProvider({ children }) {
 
   const verifyToken = async (token) => {
     try {
-      const response = await axios.get(getApiUrl('/auth/verify'), {
+      const response = await axios.get(`${API_URL}/auth/verify`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUser(response.data.user);
@@ -42,10 +41,10 @@ export function AuthProvider({ children }) {
 
   const login = async (username, password) => {
     try {
-      const response = await axios.post(getApiUrl('/auth/login'), {
+      const response = await axios.post(`${API_URL}/auth/login`, {
         username,
         password
-      });     
+      });
       const { token, user } = response.data;
       localStorage.setItem('token', token);
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -61,7 +60,7 @@ export function AuthProvider({ children }) {
 
   const register = async (username, email, password) => {
     try {
-      const response = await axios.post(getApiUrl('/auth/register'), {
+      const response = await axios.post(`${API_URL}/auth/register`, {
         username,
         email,
         password
@@ -81,7 +80,7 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     try {
-      await axios.post(getApiUrl('/auth/logout'));
+      await axios.post(`${API_URL}/auth/logout`);
     } catch (error) {
       console.error('Logout error:', error);
     } finally {

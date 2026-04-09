@@ -1,4 +1,4 @@
-// webapp/Frontend/src/App.jsx
+// CEG491X-Capstone/webapp/Frontend/src/App.jsx
 
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';

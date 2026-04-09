@@ -235,11 +235,7 @@ const resources = {
       "timelineSaved": "Timeline saved",
       "saveError": "Error saving timeline",
       "updateError": "Error updating event",
-      "downloadProgress": "Downloaded: {{transferred}} / {{total}}<br>Speed: {{speed}}/s",
-      "play": "Play",
-      "pause": "Pause",
-      "bleConnectedTooltip": "EchoLog device still connected via Bluetooth",
-      "bleConnectedLabel": "BLE connected: {{device}}"
+      "downloadProgress": "Downloaded: {{transferred}} / {{total}}<br>Speed: {{speed}}/s"
     }
   },
   fr: {
@@ -463,11 +459,7 @@ const resources = {
       "timelineSaved": "Chronologie enregistrée",
       "saveError": "Erreur lors de l'enregistrement de la chronologie",
       "updateError": "Erreur lors de la mise à jour de l'événement",
-      "downloadProgress": "Téléchargé : {{transferred}} / {{total}}<br>Vitesse : {{speed}}/s",
-      "play": "Lire",
-      "pause": "Pause",
-      "bleConnectedTooltip": "L'appareil EchoLog est toujours connecté via Bluetooth",
-      "bleConnectedLabel": "BLE connecté : {{device}}"
+      "downloadProgress": "Téléchargé : {{transferred}} / {{total}}<br>Vitesse : {{speed}}/s"
     }
   },
   es: {
@@ -691,11 +683,7 @@ const resources = {
       "timelineSaved": "Línea de tiempo guardada",
       "saveError": "Error al guardar la línea de tiempo",
       "updateError": "Error al actualizar el evento",
-      "downloadProgress": "Descargado: {{transferred}} / {{total}}<br>Velocidad: {{speed}}/s",
-      "play": "Reproducir",
-      "pause": "Pausa",
-      "bleConnectedTooltip": "El dispositivo EchoLog sigue conectado por Bluetooth",
-      "bleConnectedLabel": "BLE conectado: {{device}}"
+      "downloadProgress": "Descargado: {{transferred}} / {{total}}<br>Velocidad: {{speed}}/s"
     }
   },
   zh: {
@@ -919,11 +907,7 @@ const resources = {
       "timelineSaved": "时间线已保存",
       "saveError": "保存时间线时出错",
       "updateError": "更新事件时出错",
-      "downloadProgress": "已下载：{{transferred}} / {{total}}<br>速度：{{speed}}/秒",
-      "play": "播放",
-      "pause": "暂停",
-      "bleConnectedTooltip": "EchoLog 设备仍通过蓝牙连接",
-      "bleConnectedLabel": "BLE 已连接：{{device}}"
+      "downloadProgress": "已下载：{{transferred}} / {{total}}<br>速度：{{speed}}/秒"
     }
   }
 };
@@ -934,16 +918,9 @@ i18n
   .init({
     resources,
     fallbackLng: 'en',
-    supportedLngs: ['en', 'fr', 'es', 'zh'],
-    // Make `en-US` resolve to `en`, etc.
-    nonExplicitSupportedLngs: true,
-    load: 'languageOnly',
-    // Don't force a language here; let the detector (localStorage/querystring/etc)
-    // and explicit `changeLanguage` calls control the active language.
+    lng: 'en',
     detection: {
-      // Ensure user's persisted preference wins (prevents reverting to browser/cookie defaults).
-      order: ['localStorage', 'querystring', 'cookie', 'navigator'],
-      lookupLocalStorage: 'i18nextLng',
+      order: ['querystring', 'cookie', 'localStorage', 'navigator'],
       caches: ['localStorage'],
     },
     interpolation: {
@@ -953,16 +930,5 @@ i18n
       useSuspense: false,
     },
   });
-
-// Hard sync from localStorage to avoid dev StrictMode edge cases where
-// detection runs before localStorage is populated or browser language wins.
-try {
-  const persisted = localStorage.getItem('i18nextLng');
-  if (persisted && i18n.language !== persisted) {
-    i18n.changeLanguage(persisted);
-  }
-} catch {
-  // ignore
-}
 
 export default i18n;

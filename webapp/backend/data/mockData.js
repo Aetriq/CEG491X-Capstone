@@ -1,4 +1,4 @@
-// Webapp/Backend/data/mockData.js
+/* CEG491X-Capstone/webapp/Backend/data/mockData.js*/
 // In-memory mock data storage for timelines and events
 // Used when database is not available or USE_MOCK_DATA=true
 // ⚠️ WARNING: This data is lost on server restart!

@@ -184,9 +184,15 @@ router.get('/:id', async (req, res) => {
 router.get('/', optionalAuth, async (req, res) => {
   try {
     // Authenticated user + DB models → return ALL timelines for this user
-    if (Timeline && req.user) {
+    if (Timeline && Event && req.user) {
       const timelines = await Timeline.findByUserId(req.user.id);
-      return res.json({ timelines });
+      const withCounts = await Promise.all(
+        timelines.map(async (timeline) => {
+          const events = await Event.findByTimelineId(timeline.id);
+          return { ...timeline, events_count: events.length };
+        })
+      );
+      return res.json({ timelines: withCounts });
     }
 
     // Fallback: mock data (unauthenticated/demo mode)
@@ -199,6 +205,69 @@ router.get('/', optionalAuth, async (req, res) => {
   } catch (error) {
     console.error('List timelines error:', error);
     res.status(500).json({ error: 'Error fetching timelines' });
+  }
+});
+
+// Rename timeline
+router.put('/:id', verifyToken, async (req, res) => {
+  try {
+    const timelineId = parseInt(req.params.id, 10);
+    const name = (req.body?.name || '').trim();
+    if (!name) {
+      return res.status(400).json({ error: 'Timeline name is required' });
+    }
+
+    if (Timeline) {
+      const timeline = await Timeline.findById(timelineId);
+      if (!timeline) return res.status(404).json({ error: 'Timeline not found' });
+      if (timeline.user_id !== req.user.id) return res.status(403).json({ error: 'Access denied' });
+
+      // Store user-facing timeline name in device_id for now.
+      await Timeline.update(timelineId, { device_id: name });
+      const updated = await Timeline.findById(timelineId);
+      return res.json({ message: 'Timeline renamed successfully', timeline: updated });
+    }
+
+    if (mockData) {
+      const timeline = mockData.getTimeline(timelineId);
+      if (!timeline) return res.status(404).json({ error: 'Timeline not found' });
+      timeline.device_id = name;
+      return res.json({ message: 'Timeline renamed successfully (mock data)', timeline });
+    }
+
+    return res.status(500).json({ error: 'No data source available' });
+  } catch (error) {
+    console.error('Rename timeline error:', error);
+    return res.status(500).json({ error: 'Error renaming timeline' });
+  }
+});
+
+// Delete timeline
+router.delete('/:id', verifyToken, async (req, res) => {
+  try {
+    const timelineId = parseInt(req.params.id, 10);
+
+    if (Timeline) {
+      const timeline = await Timeline.findById(timelineId);
+      if (!timeline) return res.status(404).json({ error: 'Timeline not found' });
+      if (timeline.user_id !== req.user.id) return res.status(403).json({ error: 'Access denied' });
+
+      if (Event) {
+        const events = await Event.findByTimelineId(timelineId);
+        await Promise.all(events.map((ev) => Event.delete(ev.id)));
+      }
+      await Timeline.delete(timelineId);
+      return res.json({ message: 'Timeline deleted successfully' });
+    }
+
+    if (mockData) {
+      return res.status(501).json({ error: 'Delete not available in mock mode' });
+    }
+
+    return res.status(500).json({ error: 'No data source available' });
+  } catch (error) {
+    console.error('Delete timeline error:', error);
+    return res.status(500).json({ error: 'Error deleting timeline' });
   }
 });
 
@@ -219,20 +288,10 @@ router.get('/search/date', verifyToken, async (req, res) => {
 });
 
 // Save Timeline (save currently viewed timeline to database) - no auth required for mock
-router.post('/:id/save', async (req, res) => {
+router.post('/:id/save', verifyToken, async (req, res) => {
   try {
     const timelineId = parseInt(req.params.id);
 
-    // Use mock data if available
-    if (mockData) {
-      const timeline = mockData.getTimeline(timelineId);
-      return res.json({
-        message: 'Timeline saved successfully (mock data)',
-        timeline
-      });
-    }
-
-    // Use database if available
     if (Timeline) {
       const timeline = await Timeline.findById(timelineId);
       if (!timeline) {
@@ -247,6 +306,14 @@ router.post('/:id/save', async (req, res) => {
       // Timeline is already saved, just confirm
       return res.json({
         message: 'Timeline saved successfully',
+        timeline
+      });
+    }
+
+    if (mockData) {
+      const timeline = mockData.getTimeline(timelineId);
+      return res.json({
+        message: 'Timeline saved successfully (mock data)',
         timeline
       });
     }
@@ -276,22 +343,6 @@ router.put('/:id/events/:eventId',
       const timelineId = parseInt(req.params.id);
       const eventId = parseInt(req.params.eventId);
 
-      // Use mock data if available
-      if (mockData) {
-        const updates = {};
-        if (req.body.time !== undefined) updates.time = req.body.time;
-        if (req.body.transcript !== undefined) updates.transcript = req.body.transcript;
-        if (req.body.latitude !== undefined) updates.latitude = req.body.latitude;
-        if (req.body.longitude !== undefined) updates.longitude = req.body.longitude;
-
-        const updatedEvent = mockData.updateEvent(eventId, updates);
-        return res.json({
-          message: 'Event updated successfully',
-          event: updatedEvent
-        });
-      }
-
-      // Use database if available
       if (Timeline && Event) {
         const timeline = await Timeline.findById(timelineId);
         if (!timeline) {
@@ -323,6 +374,20 @@ router.put('/:id/events/:eventId',
         });
       }
 
+      if (mockData) {
+        const updates = {};
+        if (req.body.time !== undefined) updates.time = req.body.time;
+        if (req.body.transcript !== undefined) updates.transcript = req.body.transcript;
+        if (req.body.latitude !== undefined) updates.latitude = req.body.latitude;
+        if (req.body.longitude !== undefined) updates.longitude = req.body.longitude;
+
+        const updatedEvent = mockData.updateEvent(eventId, updates);
+        return res.json({
+          message: 'Event updated successfully',
+          event: updatedEvent
+        });
+      }
+
       res.status(500).json({ error: 'No data source available' });
     } catch (error) {
       console.error('Edit timeline error:', error);
@@ -336,13 +401,44 @@ router.get('/:id/export', async (req, res) => {
   try {
     const timelineId = parseInt(req.params.id);
     let events = [];
+    let timeline = null;
 
-    // Use mock data if available
-    if (mockData) {
-      events = mockData.getEvents(timelineId);
-    } else if (Timeline && Event) {
-      // Use database if available
-      const timeline = await Timeline.findById(timelineId);
+    const csvEscape = (value) => `"${String(value ?? '').replace(/"/g, '""').replace(/\r?\n/g, '\n')}"`;
+
+    const parseCoordinatesFromAudioName = (nameOrPath) => {
+      if (!nameOrPath) return null;
+      const base = String(nameOrPath).split(/[\\/]/).pop() || '';
+      const match = base.match(/^(\d{8})_(\d{6})_(-?\d{1,9})_(-?\d{1,9})(?:\.[^.]+)?$/);
+      if (!match) return null;
+      const lat = Number(match[3]) / 1e6;
+      const lon = Number(match[4]) / 1e6;
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+      if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+      return { lat, lon };
+    };
+
+    const formatLocation = (event) => {
+      let lat = event.latitude;
+      let lon = event.longitude;
+      if (lat == null || lon == null || Number.isNaN(Number(lat)) || Number.isNaN(Number(lon))) {
+        const fromName = parseCoordinatesFromAudioName(event.audio_file_path || event.audioFilePath || '');
+        if (fromName) {
+          lat = fromName.lat;
+          lon = fromName.lon;
+        }
+      }
+      if (lat == null || lon == null || Number.isNaN(Number(lat)) || Number.isNaN(Number(lon))) {
+        return 'N/A';
+      }
+      const nLat = Number(lat);
+      const nLon = Number(lon);
+      const latDir = nLat >= 0 ? 'N' : 'S';
+      const lonDir = nLon >= 0 ? 'E' : 'W';
+      return `${Math.abs(nLat).toFixed(6)} deg ${latDir}, ${Math.abs(nLon).toFixed(6)} deg ${lonDir}`;
+    };
+
+    if (Timeline && Event) {
+      timeline = await Timeline.findById(timelineId);
       if (!timeline) {
         return res.status(404).json({ error: 'Timeline not found' });
       }
@@ -353,39 +449,41 @@ router.get('/:id/export', async (req, res) => {
       }
 
       events = await Event.findByTimelineId(timelineId);
+    } else if (mockData) {
+      timeline = mockData.getTimeline(timelineId) || null;
+      events = mockData.getEvents(timelineId);
     } else {
       return res.status(500).json({ error: 'No data source available' });
     }
 
-    // Generate CSV including audio name only (no full path or URL)
-    const csvHeader = 'Event,Time,Transcript,Latitude,Longitude,AudioFileName\n';
+    // Generate CSV to mirror Timeline View columns.
+    const csvHeader = 'Event,Time,Transcript,Location,AudioFileName\n';
     const csvRows = events.map((event) => {
-      const transcriptRaw = event.transcript || '';
-      // Escape quotes and newlines for CSV
-      const transcript = transcriptRaw
-        .replace(/"/g, '""')
-        .replace(/\r?\n/g, ' ');
-
-      const lat = event.latitude != null ? event.latitude : '';
-      const lon = event.longitude != null ? event.longitude : '';
+      const transcript = event.transcript != null ? String(event.transcript) : '';
+      const location = formatLocation(event);
 
       const audioPath = event.audio_file_path || event.audioFilePath || '';
       const audioFileName = audioPath ? path.basename(audioPath) : '';
 
       return [
-        event.event_number,
-        `"${event.time || ''}"`,
-        `"${transcript}"`,
-        lat,
-        lon,
-        `"${audioFileName.replace(/"/g, '""')}"`
+        csvEscape(event.event_number ?? ''),
+        csvEscape(event.time || ''),
+        csvEscape(transcript),
+        csvEscape(location),
+        csvEscape(audioFileName)
       ].join(',');
     }).join('\n');
 
     const csv = csvHeader + csvRows;
+    const timelineCreated = timeline?.created_at || timeline?.date_generated;
+    const createdDate = timelineCreated ? new Date(timelineCreated) : null;
+    const timelineNameRaw = (createdDate && !Number.isNaN(createdDate.getTime()))
+      ? createdDate.toISOString().replace(/:/g, '-').slice(0, 16)
+      : `timeline-${timelineId}`;
+    const safeTimelineName = timelineNameRaw.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim() || `timeline-${timelineId}`;
 
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="timeline-${timelineId}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeTimelineName}.csv"`);
     res.send(csv);
   } catch (error) {
     console.error('Export timeline error:', error);

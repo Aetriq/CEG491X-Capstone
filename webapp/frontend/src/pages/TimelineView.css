@@ -1,3 +1,4 @@
+/* CEG491X-Capstone/webapp/Frontend/src/pages/TimelineView.css */
 /* TimelineView styles matching original HTML design */
 
 .timeline-view-container {
@@ -6,6 +7,42 @@
   height: 100vh;
   background: #e0e8ef;
   position: relative;
+}
+
+.floating-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.square {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  background: rgba(26, 113, 153, 0.05);
+  border: 1px solid rgba(26, 113, 153, 0.1);
+  backdrop-filter: blur(2px);
+  left: -100px;
+}
+
+.square:nth-child(1) { top: 10%; animation: floatRight 15s linear infinite; }
+.square:nth-child(2) { top: 20%; animation: floatRight 22s linear infinite 2s; width: 60px; height: 60px; }
+.square:nth-child(3) { top: 35%; animation: floatRight 18s linear infinite 5s; }
+.square:nth-child(4) { top: 50%; animation: floatRight 25s linear infinite 1s; width: 30px; height: 30px; }
+.square:nth-child(5) { top: 65%; animation: floatRight 20s linear infinite 8s; }
+.square:nth-child(6) { top: 80%; animation: floatRight 28s linear infinite 10s; }
+.square:nth-child(7) { top: 90%; animation: floatRight 17s linear infinite 4s; width: 50px; height: 50px; }
+
+@keyframes floatRight {
+  0% { left: -10%; transform: rotate(0deg); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { left: 110%; transform: rotate(360deg); opacity: 0; }
 }
 
 .top-right-buttons {
@@ -59,6 +96,11 @@
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
+.go-saved-btn {
+  min-width: 220px;
+  justify-content: center;
+}
+
 .save-btn {
   background: linear-gradient(135deg, #4CAF50, #388E3C);
 }
@@ -94,6 +136,8 @@
   display: flex;
   flex: 1;
   overflow: hidden;
+  position: relative;
+  z-index: 1;
 }
 
 .content {

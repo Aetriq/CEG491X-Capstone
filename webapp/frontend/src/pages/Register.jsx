@@ -1,8 +1,9 @@
-﻿// webapp/Frontend/src/pages/Register.jsx
+﻿// CEG491X-Capstone/webapp/Frontend/src/pages/Register.jsx
 
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useTranslation } from 'react-i18next'; // NEW: i18n
 import './Login.css';
 
 function Register() {
@@ -13,6 +14,7 @@ function Register() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
+  const { t } = useTranslation(); // NEW: i18n
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -20,12 +22,12 @@ function Register() {
     setError('');
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      setError(t('passwordsDoNotMatch'));
       return;
     }
 
     if (password.length < 6) {
-      setError('Password must be at least 6 characters');
+      setError(t('passwordMinLength'));
       return;
     }
 
@@ -43,76 +45,87 @@ function Register() {
 
   return (
     <div className="login-container">
-      <div className="login-left">
-        <div className="login-glass-panel">
-          <div className="login-title">EchoLog</div>
-          <div className="login-sub">Create Account</div>
-          <form className="login-form" onSubmit={handleSubmit}>
-            <div className="login-group">
-              <label className="login-label" htmlFor="username">Username</label>
-              <input
-                type="text"
-                id="username"
-                className="login-input"
-                placeholder="Enter Username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                minLength={3}
-              />
-            </div>
-            <div className="login-group">
-              <label className="login-label" htmlFor="email">Email</label>
-              <input
-                type="email"
-                id="email"
-                className="login-input"
-                placeholder="Enter Email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="login-group">
-              <label className="login-label" htmlFor="password">Password</label>
-              <input
-                type="password"
-                id="password"
-                className="login-input"
-                placeholder="Enter Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-              />
-            </div>
-            <div className="login-group">
-              <label className="login-label" htmlFor="confirmPassword">Confirm Password</label>
-              <input
-                type="password"
-                id="confirmPassword"
-                className="login-input"
-                placeholder="Confirm Password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-              />
-            </div>
-            <div className="login-links">
-              <span></span>
-              <Link to="/login">Already have an account? Login</Link>
-            </div>
-            {error && <div className="error-msg">{error}</div>}
-            <button type="submit" className="btn-login" disabled={loading}>
-              {loading ? 'Creating account...' : 'Create Account'}
-            </button>
-          </form>
+      {/* Video background (same as Login) */}
+      <video className="video-background" autoPlay muted loop playsInline>
+        <source src="/Boat1.mp4" type="video/mp4" />
+        {t('videoNotSupported')}
+      </video>
+      <div className="video-overlay"></div>
+      <div className="floating-elements">
+        <div className="floating-element audio-wave"></div>
+        <div className="floating-element bluetooth"></div>
+        <div className="floating-element device"></div>
+      </div>
+      <div className="login-card">
+        <div className="login-left">
+          <div className="login-glass-panel">
+            <div className="login-title">{t('appName')}</div>
+            <div className="login-sub">{t('createAccount')}</div>
+            <form className="login-form" onSubmit={handleSubmit}>
+              <div className="login-group">
+                <label className="login-label" htmlFor="username">{t('username')}</label>
+                <input
+                  type="text"
+                  id="username"
+                  className="login-input"
+                  placeholder={t('username')}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                  minLength={3}
+                />
+              </div>
+              <div className="login-group">
+                <label className="login-label" htmlFor="email">{t('email')}</label>
+                <input
+                  type="email"
+                  id="email"
+                  className="login-input"
+                  placeholder={t('email')}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="login-group">
+                <label className="login-label" htmlFor="password">{t('password')}</label>
+                <input
+                  type="password"
+                  id="password"
+                  className="login-input"
+                  placeholder={t('password')}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                />
+              </div>
+              <div className="login-group">
+                <label className="login-label" htmlFor="confirmPassword">{t('confirmPassword')}</label>
+                <input
+                  type="password"
+                  id="confirmPassword"
+                  className="login-input"
+                  placeholder={t('confirmPassword')}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="login-links">
+                <span></span>
+                <Link to="/login">{t('alreadyHaveAccount')}</Link>
+              </div>
+              {error && <div className="error-msg">{error}</div>}
+              <button type="submit" className="btn-login" disabled={loading}>
+                {loading ? t('processing') : t('registerNow')}
+              </button>
+            </form>
+          </div>
         </div>
       </div>
-      <div className="login-right"></div>
     </div>
   );
 }
 
 export default Register;
-

@@ -1,4 +1,4 @@
-﻿// webapp/Backend/scripts/seed-admin.js
+﻿// CEG491X-Capstone/webapp/Backend/scripts/seed-admin.js
 
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const path = require('path');

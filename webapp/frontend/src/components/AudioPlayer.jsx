@@ -1,4 +1,4 @@
-//// webapp/Frontend/src/components/AudioPlayer.jsx
+// CEG491X-Capstone/webapp/Frontend/src/components/AudioPlayer.jsx
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -48,7 +48,7 @@ function AudioPlayer({ eventId, audioFilePath }) {
     } else {
       setLoading(true);
       // Build audio URL: use filePath query parameter if available (for cached timelines)
-      let audioUrl = getApiUrl(`/audio/${eventId}`);
+      let audioUrl = `${API_URL}/audio/${eventId}`;
       if (audioFilePath) {
         // Extract relative path from absolute path if needed
         // Backend expects path relative to uploads directory or absolute path
