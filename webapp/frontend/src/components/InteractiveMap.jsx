@@ -2,10 +2,11 @@ import { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
-export default function InteractiveMap({ longitude, latitude }) {
+export default function InteractiveMap({events, latitude, longitude}) {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
-  const markerRef = useRef(null);
+  const markersRef = useRef([]);
+  const RedDotRef = useRef(null);
   const mapboxToken =
     (typeof process !== "undefined" && process.env && process.env.VITE_MAPBOX_API_KEY) ||
     import.meta.env.VITE_MAPBOX_API_KEY ||
@@ -22,8 +23,7 @@ export default function InteractiveMap({ longitude, latitude }) {
       container: mapContainer.current,
       style: "mapbox://styles/mapbox/standard-satellite",
       projection: "globe",
-      zoom: 10,
-      center: [longitude, latitude],
+      zoom: 10
     });
 
     mapRef.current.addControl(new mapboxgl.NavigationControl());
@@ -31,60 +31,103 @@ export default function InteractiveMap({ longitude, latitude }) {
 
     mapRef.current.on("style.load", () => {
       mapRef.current.setFog({});
+       
     });
 
-    // Create marker
-    markerRef.current = new mapboxgl.Marker()
-      .setLngLat([longitude, latitude])
-      .addTo(mapRef.current);
-    //marker ref can be used to add more markers many times
-
-    //Add layer for path
-    mapRef.current.on('load', () => {
-  mapRef.current.addSource('route', {
-    type: 'geojson',
-    data: {
-      type: 'Feature',
-      properties: {},
-      geometry: {
-        type: 'LineString',
-        coordinates: [
-          [-75.6972, 45.4215], // Ottawa
-          [-73.5673, 45.5017]  // Montreal
-        ]
-      }
-    }
-  });
-
-  mapRef.current.addLayer({
-    id: 'route-line',
-    type: 'line',
-    source: 'route',
-    layout: {
-      'line-join': 'round',
-      'line-cap': 'round'
-    },
-    paint: {
-      'line-color': '#007cbf',
-      'line-width': 4
-    }
-  });
-});
-    // cleanup (important in React)
+   
+    
+    // cleanup (important in React) executes when user leaves
     return () => {
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
       }
-      markerRef.current = null;
+      // Clear old markers
+  markersRef.current.forEach(marker => marker.remove());
+  markersRef.current = [];
+  if(RedDotRef.current){
+  RedDotRef.current.remove();
+  RedDotRef.current=null;
+  }
     };
-  }, [hasToken, latitude, longitude, mapboxToken]);
+  }, [hasToken, mapboxToken]
+);
 
-  useEffect(() => {
-    if (!hasToken || !mapRef.current || !markerRef.current) {
+
+//Done after events is loaded in on the main timeline page
+useEffect(()=>{
+if (!hasToken || !mapRef.current) {
       return;
     }
-    markerRef.current.setLngLat([longitude, latitude]);
+    if(events){
+
+  // Clear old markers
+  markersRef.current.forEach(marker => marker.remove());
+  markersRef.current = [];
+
+  const coordinates = [];
+
+  events.forEach((event, index) => {
+    if (event.latitude && event.longitude) {
+      const lngLat = [event.longitude, event.latitude];
+
+      // Save for path
+      coordinates.push(lngLat);
+
+      // Create marker
+      const marker = new mapboxgl.Marker()
+        .setLngLat(lngLat)
+        .setPopup(
+    new mapboxgl.Popup().setText(`Log ${index}: ${lngLat[1]}, ${lngLat[0]}`)
+  )
+        .addTo(mapRef.current);
+
+      markersRef.current.push(marker);
+    }
+  });
+//Delete old path if exists
+    if(mapRef.current.getSource('route')){
+      mapRef.current.removeLayer('route');
+      mapRef.current.removeSource('route');
+    }
+
+    //Add path
+  if (coordinates.length>1){
+
+    mapRef.current.addSource('route', {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: coordinates
+        }
+      }
+    });
+
+    mapRef.current.addLayer({
+      id: 'route',
+      type: 'line',
+      source: 'route',
+      paint: {
+        'line-width': 4,
+        'line-color': '#007cbf'
+      }
+    });
+  }
+    }
+}, events)
+
+  useEffect(() => {
+    if (!hasToken || !mapRef.current||!longitude||!latitude) {
+      return;
+    }
+    if(!RedDotRef.current){
+      RedDotRef.current = new mapboxgl.Marker({ color: "red" })
+      .setLngLat([0, 0])
+      .addTo(mapRef.current);
+    }
+    else {RedDotRef.current.setLngLat([longitude, latitude]);}
     mapRef.current.easeTo({ center: [longitude, latitude], duration: 500 });
   }, [hasToken, latitude, longitude]);
 

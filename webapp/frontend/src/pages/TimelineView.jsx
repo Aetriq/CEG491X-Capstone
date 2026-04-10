@@ -246,6 +246,7 @@ function TimelineView() {
     setEditForm({});
   };
 
+
   const formatCoordinates = (lat, lon) => {
     if (lat == null || lon == null || Number.isNaN(Number(lat)) || Number.isNaN(Number(lon))) {
       return 'N/A';
@@ -292,6 +293,61 @@ function TimelineView() {
       Math.abs(nLon) <= 180
     );
   };
+
+  
+    //Given a validated pair of coordinates
+    //Returns either the location name or the formatted coordinates if the former failed
+    //Used for the table columns
+  const getLocation = async (lat, lng) => {
+    const lang = (i18n.language || 'en').split('-')[0];
+    try
+      {const response = await axios.get(`${API_URL}/reverseGeocode`, {
+          params: { lng: mapTarget.lon, lat: mapTarget.lat, lang }
+        });
+     const address = response?.data?.place_name;
+    
+     if(address){
+      return address+"\n"+formatCoordinates(lat,lng);
+     }
+
+     return formatCoordinates(lat,lng)}
+     catch{
+      console.log(error);
+      return formatCoordinates(lat,lng);
+     }
+  };
+
+  //Intermediate between the table and the async function getLocation
+  function LocationCell({ lat, lon }) {
+  const [text, setText] = useState("Loading...");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchLocation() {
+      if (!lat || !lon) {
+        setText("N/A");
+        return;
+      }
+
+      const result = await getLocation(lat, lon);
+
+      if (isMounted) setText(result);
+    }
+
+    fetchLocation();
+
+    return () => {
+      isMounted = false; // prevent setting state after unmount
+    };
+  }, [lat, lon]);
+
+  return (
+      <div>
+        {text}
+      </div>
+  );
+}
 
   const selectedEvent = useMemo(
     () => events.find((ev) => ev.id === selectedEventId) || null,
@@ -462,12 +518,7 @@ function TimelineView() {
                       <td className="position">
                         {(() => {
                           const coords = getEventCoordinates(event);
-                          const text = coords
-                            ? formatCoordinates(coords.lat, coords.lon)
-                            : 'N/A';
-                          return text.split('\n').map((line, i) => (
-                          <div key={i}>{line}</div>
-                          ));
+                          return(<LocationCell lat= {coords? coords.lat : null} lon = {coords? coords.lon: null}/>)
                         })()}
                       </td>
                       <td className="audio-cell">
@@ -499,7 +550,7 @@ function TimelineView() {
                   ? `Selected location: ${selectedPlaceName}`
                   : 'Select an event with valid coordinates to preview on map'}
               </div>
-              <InteractiveMap longitude={mapTarget.lon} latitude={mapTarget.lat} />
+              <InteractiveMap events ={events} longitude={mapTarget.lon} latitude={mapTarget.lat} />
             </div>
           </div>
         </main>
