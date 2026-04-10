@@ -1,20 +1,26 @@
-// CEG491X-Capstone/webapp/Frontend/src/contexts/AuthContext.jsx
+// webapp/frontend/src/contexts/AuthContext.jsx
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
+import { getApiUrl } from '../utils/api';
 
 const AuthContext = createContext();
-
-const API_URL = '/api';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const USER_STORAGE_KEY = 'user';
 
   useEffect(() => {
     // Check if user is already logged in
     const token = localStorage.getItem('token');
     if (token) {
+      const cachedUser = localStorage.getItem(USER_STORAGE_KEY);
+      if (cachedUser) {
+        try {
+          setUser(JSON.parse(cachedUser));
+        } catch (_) {}
+      }
       // Set auth header immediately to avoid race conditions where other pages
       // fire API requests before verifyToken() finishes.
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -25,30 +31,71 @@ export function AuthProvider({ children }) {
   }, []);
 
   const verifyToken = async (token) => {
-    try {
-      const response = await axios.get(`${API_URL}/auth/verify`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setUser(response.data.user);
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    } catch (error) {
-      localStorage.removeItem('token');
-      delete axios.defaults.headers.common['Authorization'];
-    } finally {
-      setLoading(false);
+    const maxAttempts = 3;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        // Render free/low tier can cold-start; allow longer verify timeout.
+        const response = await axios.get(getApiUrl('/auth/verify'), {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 60000
+        });
+        const verifiedUser = response.data?.user;
+        if (!verifiedUser) {
+          localStorage.removeItem('token');
+          localStorage.removeItem(USER_STORAGE_KEY);
+          delete axios.defaults.headers.common['Authorization'];
+          setLoading(false);
+          return;
+        }
+        setUser(verifiedUser);
+        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(verifiedUser));
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        setLoading(false);
+        return;
+      } catch (error) {
+        const status = error.response?.status;
+        if (status === 401) {
+          localStorage.removeItem('token');
+          localStorage.removeItem(USER_STORAGE_KEY);
+          delete axios.defaults.headers.common['Authorization'];
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+        const retryable =
+          !error.response ||
+          status === 502 ||
+          status === 503 ||
+          status === 504;
+        if (retryable && attempt < maxAttempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 2500 * (attempt + 1)));
+          continue;
+        }
+        break;
+      }
     }
+    setLoading(false);
   };
 
   const login = async (username, password) => {
     try {
-      const response = await axios.post(`${API_URL}/auth/login`, {
+      const response = await axios.post(getApiUrl('/auth/login'), {
         username,
         password
       });
-      const { token, user } = response.data;
+      const data = response.data;
+      if (!data || typeof data !== 'object' || !data.token) {
+        return {
+          success: false,
+          error:
+            'Unexpected response from server. If you are on the deployed site, set VITE_API_URL to your backend URL and redeploy.'
+        };
+      }
+      const { token, user: loggedInUser } = data;
       localStorage.setItem('token', token);
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(loggedInUser));
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      setUser(user);
+      setUser(loggedInUser);
       return { success: true };
     } catch (error) {
       return {
@@ -60,15 +107,24 @@ export function AuthProvider({ children }) {
 
   const register = async (username, email, password) => {
     try {
-      const response = await axios.post(`${API_URL}/auth/register`, {
+      const response = await axios.post(getApiUrl('/auth/register'), {
         username,
         email,
         password
       });
-      const { token, user } = response.data;
+      const data = response.data;
+      if (!data || typeof data !== 'object' || !data.token) {
+        return {
+          success: false,
+          error:
+            'Unexpected response from server. If you are on the deployed site, set VITE_API_URL to your backend URL and redeploy.'
+        };
+      }
+      const { token, user: registeredUser } = data;
       localStorage.setItem('token', token);
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(registeredUser));
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      setUser(user);
+      setUser(registeredUser);
       return { success: true };
     } catch (error) {
       return {
@@ -80,11 +136,12 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     try {
-      await axios.post(`${API_URL}/auth/logout`);
+      await axios.post(getApiUrl('/auth/logout'));
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
       localStorage.removeItem('token');
+      localStorage.removeItem(USER_STORAGE_KEY);
       delete axios.defaults.headers.common['Authorization'];
       setUser(null);
     }
