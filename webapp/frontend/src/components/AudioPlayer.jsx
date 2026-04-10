@@ -19,7 +19,7 @@ function AudioPlayer({ eventId, audioFilePath }) {
     const audio = audioRef.current;
     if (!audio) return;
 
-    audio.volume = 1.0;
+    audio.volume = 3.0;
     const updateTime = () => setCurrentTime(audio.currentTime);
     const updateDuration = () => setDuration(audio.duration);
 

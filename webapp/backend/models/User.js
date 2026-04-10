@@ -1,4 +1,6 @@
-﻿const bcrypt = require('bcryptjs');
+﻿// webapp/Backend/models/User.js
+
+const bcrypt = require('bcryptjs');
 const { supabase } = require('../database/supabase');
 
 class User {

@@ -1,3 +1,5 @@
+// webapp/Frontend/src/contexts/DialogContex.jsx
+
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 
 const DialogContext = createContext(null);

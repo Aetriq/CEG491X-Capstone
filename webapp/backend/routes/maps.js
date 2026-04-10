@@ -1,3 +1,5 @@
+// webapp/Backend/routes/maps.js
+
 const express = require("express");
 const mbxGeocoding = require("@mapbox/mapbox-sdk/services/geocoding");
 
@@ -12,7 +14,7 @@ function getGeocodingClient() {
   return mbxGeocoding({ accessToken });
 }
 
-// GET /reverseGeocode?lng=-122.42&lat=37.78&lang="en"
+// GET /reverseGeocode?lng=-122.42&lat=37.78&lang=en
 router.get("/reverseGeocode", async (req, res) => {
   try {
     const geocodingClient = getGeocodingClient();
@@ -39,7 +41,7 @@ router.get("/reverseGeocode", async (req, res) => {
         query: [lngNum, latNum],
         language: [language],
         limit: 1,
-        type: ["place", "locality", "neighborhood", "street", "address"] 
+        types: ["place", "locality", "neighborhood", "address"] 
       })
       .send();
 

@@ -1,3 +1,5 @@
+// webapp/Backend/database/pg.js
+
 const { Pool } = require('pg');
 
 // Connection string, e.g. from Supabase or local Postgres
