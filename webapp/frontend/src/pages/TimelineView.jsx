@@ -10,7 +10,7 @@ import AudioPlayer from '../components/AudioPlayer';
 import InteractiveMap from "../components/InteractiveMap"
 import './TimelineView.css';
 
-const API_URL = '/api';
+const API_URL = 'https://echolog-backend-k0if.onrender.com//api';
 const CACHE_KEY_PREFIX = 'echolog_timeline_';
 
 function parseTimeToMinutes(timeStr) {

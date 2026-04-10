@@ -9,7 +9,7 @@ import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import { useBle } from '../contexts/BleConnectionContext';
 
-const API_URL = '/api';
+const API_URL = 'https://echolog-backend-k0if.onrender.com/api';
 
 const SettingsPage = () => {
   const { t, i18n } = useTranslation(); // NEW
